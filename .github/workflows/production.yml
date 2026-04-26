@@ -1,0 +1,83 @@
+name: Production Pipeline
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install .
+
+      - name: Smoke import backend app
+        working-directory: backend
+        env:
+          SECRET_KEY: "development-secret-key"
+          DATABASE_URL: "postgresql+psycopg://postgres:postgres@localhost:5432/baba_saas"
+        run: python -c "from app.main import app; print(app.title)"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: frontend
+        env:
+          NEXT_PUBLIC_API_BASE_URL: "/api"
+        run: npm run build
+
+      - name: Build backend image
+        run: docker build -t baba-backend:ci ./backend
+
+      - name: Build frontend image
+        run: docker build --build-arg NEXT_PUBLIC_API_BASE_URL=/api -t baba-frontend:ci ./frontend
+
+  deploy:
+    if: github.event_name == 'workflow_dispatch'
+    needs: validate
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install SSH key
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.PRODUCTION_SSH_KEY }}
+
+      - name: Add server to known hosts
+        run: ssh-keyscan -H "${{ secrets.PRODUCTION_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Deploy on production server
+        env:
+          PRODUCTION_HOST: ${{ secrets.PRODUCTION_HOST }}
+          PRODUCTION_USER: ${{ secrets.PRODUCTION_USER }}
+          PRODUCTION_PATH: ${{ secrets.PRODUCTION_PATH }}
+        run: |
+          ssh "${PRODUCTION_USER}@${PRODUCTION_HOST}" "cd '${PRODUCTION_PATH}' && git pull && bash ./scripts/production/deploy.sh"

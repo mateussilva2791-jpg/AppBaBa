@@ -1,0 +1,19 @@
+{
+  "name": "App do Baba",
+  "short_name": "Baba",
+  "description": "Plataforma esportiva para ligas de baba, ranking e operacao ao vivo.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#07110f",
+  "theme_color": "#07110f",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["sports", "utilities"]
+}
