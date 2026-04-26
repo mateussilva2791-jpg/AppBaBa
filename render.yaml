@@ -1,15 +1,9 @@
-databases:
-  - name: baba-db
-    plan: free
-    databaseName: baba_saas
-    user: baba
-
 services:
-  # ── Backend (FastAPI) ──────────────────────────────────────────────────────
+  # Backend (FastAPI)
   - type: web
     name: baba-api
     runtime: docker
-    plan: starter
+    plan: free
     dockerContext: ./backend
     dockerfilePath: ./backend/Dockerfile
     autoDeploy: true
@@ -23,24 +17,22 @@ services:
         value: 0.0.0.0
       - key: LOG_LEVEL
         value: info
+      - key: ALLOWED_HOSTS
+        value: "*"
       - key: SECRET_KEY
         generateValue: true
       - key: DATABASE_URL
-        fromDatabase:
-          name: baba-db
-          property: connectionString
+        value: postgresql://baba_saas_user:nNFg85pXQq9j3lohz1ti4YJris8xHTgB@dpg-d7n6rd7avr4c73feknc0-a/baba_saas
       - key: FRONTEND_URL
         sync: false
       - key: CORS_ALLOWED_ORIGINS
         sync: false
-      - key: ALLOWED_HOSTS
-        value: "*"
 
-  # ── Frontend (Next.js) ────────────────────────────────────────────────────
+  # Frontend (Next.js)
   - type: web
     name: baba-frontend
     runtime: docker
-    plan: starter
+    plan: free
     dockerContext: ./frontend
     dockerfilePath: ./frontend/Dockerfile
     autoDeploy: true
