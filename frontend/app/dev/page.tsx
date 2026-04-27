@@ -17,6 +17,8 @@ type BetaUser = {
   is_active: boolean;
   leagues: number;
   created_at: string;
+  last_seen_at: string | null;
+  online: boolean;
 };
 
 type BetaStats = {
@@ -87,6 +89,13 @@ export default function DevPage() {
     void init()
       .catch((e) => setError(e instanceof Error ? e.message : "Erro ao carregar painel dev."))
       .finally(() => setLoading(false));
+
+    const interval = setInterval(() => {
+      const t = getToken();
+      if (t) void load(t).catch(() => null);
+    }, 30_000);
+
+    return () => clearInterval(interval);
   }, [router]);
 
   async function handleRefresh() {
@@ -156,10 +165,11 @@ export default function DevPage() {
 
         {/* Stats */}
         {stats ? (
-          <div className="mb-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="mb-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
             <StatTile label="Total de usuarios" value={stats.total_users} sub="cadastros no beta" color="#f0b429" />
-            <StatTile label="Usuarios ativos" value={stats.active_users} sub="contas habilitadas" color="#4ade80" />
-            <StatTile label="Com liga criada" value={stats.users_with_league} sub="engajamento" color="#60a5fa" />
+            <StatTile label="Online agora" value={users.filter((u) => u.online).length} sub="últimos 5 min" color="#4ade80" />
+            <StatTile label="Usuarios ativos" value={stats.active_users} sub="contas habilitadas" color="#60a5fa" />
+            <StatTile label="Com liga criada" value={stats.users_with_league} sub="engajamento" color="#a78bfa" />
             <StatTile label="Sem liga" value={stats.users_without_league} sub="onboarding incompleto" color="#f87171" />
           </div>
         ) : null}
@@ -187,7 +197,8 @@ export default function DevPage() {
                     <th className="pb-3 text-left text-xs uppercase tracking-[0.18em] text-[--color-text-muted] font-medium">Nome</th>
                     <th className="pb-3 text-left text-xs uppercase tracking-[0.18em] text-[--color-text-muted] font-medium">E-mail</th>
                     <th className="pb-3 text-center text-xs uppercase tracking-[0.18em] text-[--color-text-muted] font-medium">Ligas</th>
-                    <th className="pb-3 text-center text-xs uppercase tracking-[0.18em] text-[--color-text-muted] font-medium">Status</th>
+                    <th className="pb-3 text-center text-xs uppercase tracking-[0.18em] text-[--color-text-muted] font-medium">Online</th>
+                    <th className="pb-3 text-center text-xs uppercase tracking-[0.18em] text-[--color-text-muted] font-medium">Conta</th>
                     <th className="pb-3 text-right text-xs uppercase tracking-[0.18em] text-[--color-text-muted] font-medium">Cadastro</th>
                   </tr>
                 </thead>
@@ -201,9 +212,17 @@ export default function DevPage() {
                     >
                       <td className="py-3.5 pr-4">
                         <div className="flex items-center gap-3">
-                          <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[--color-accent-primary]/10 font-[family-name:var(--font-manrope)] text-xs font-bold text-[--color-accent-primary]">
-                            {user.full_name.slice(0, 2).toUpperCase()}
-                          </span>
+                          <div className="relative shrink-0">
+                            <span className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-[--color-accent-primary]/10 font-[family-name:var(--font-manrope)] text-xs font-bold text-[--color-accent-primary]">
+                              {user.full_name.slice(0, 2).toUpperCase()}
+                            </span>
+                            <span
+                              className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-[#0a1210] ${
+                                user.online ? "bg-emerald-400" : "bg-white/20"
+                              }`}
+                              style={user.online ? { boxShadow: "0 0 6px #4ade80" } : undefined}
+                            />
+                          </div>
                           <span className="font-medium text-[--color-text-primary]">{user.full_name}</span>
                         </div>
                       </td>
@@ -213,6 +232,19 @@ export default function DevPage() {
                           {user.leagues > 0 ? <Trophy className="h-3.5 w-3.5" /> : <UserX className="h-3.5 w-3.5" />}
                           {user.leagues}
                         </span>
+                      </td>
+                      <td className="py-3.5 pr-4 text-center">
+                        {user.online ? (
+                          <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-400/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-emerald-300">
+                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" style={{ boxShadow: "0 0 5px #4ade80", animation: "live-pulse 1.4s ease-in-out infinite" }} />
+                            Online
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 rounded-full bg-white/5 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-[--color-text-muted]">
+                            <span className="h-1.5 w-1.5 rounded-full bg-white/20" />
+                            {user.last_seen_at ? formatDate(user.last_seen_at) : "Nunca"}
+                          </span>
+                        )}
                       </td>
                       <td className="py-3.5 pr-4 text-center">
                         <span

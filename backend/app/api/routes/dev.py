@@ -1,3 +1,5 @@
+from datetime import UTC, datetime, timedelta
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -7,6 +9,8 @@ from app.core.config import get_settings
 from app.db.session import get_db
 from app.models.league import LeagueMember
 from app.models.user import User
+
+ONLINE_THRESHOLD_MINUTES = 5
 
 
 router = APIRouter(prefix="/dev", tags=["dev"])
@@ -36,6 +40,8 @@ def list_beta_users(
         .all()
     )
 
+    threshold = datetime.now(UTC) - timedelta(minutes=ONLINE_THRESHOLD_MINUTES)
+
     return [
         {
             "id": str(user.id),
@@ -44,6 +50,8 @@ def list_beta_users(
             "is_active": user.is_active,
             "leagues": n or 0,
             "created_at": user.created_at.isoformat(),
+            "last_seen_at": user.last_seen_at.isoformat() if user.last_seen_at else None,
+            "online": user.last_seen_at is not None and user.last_seen_at.replace(tzinfo=UTC) >= threshold,
         }
         for user, n in rows
     ]

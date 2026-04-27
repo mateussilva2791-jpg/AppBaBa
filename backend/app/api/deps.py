@@ -1,4 +1,5 @@
 import uuid
+from datetime import UTC, datetime
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
@@ -40,7 +41,10 @@ def get_current_user(
     token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
 ) -> User:
-    return get_user_from_token(token, db)
+    user = get_user_from_token(token, db)
+    user.last_seen_at = datetime.now(UTC)
+    db.commit()
+    return user
 
 
 def get_current_league_member(
