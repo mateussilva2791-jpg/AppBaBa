@@ -7,7 +7,7 @@ services:
     dockerContext: ./backend
     dockerfilePath: ./backend/Dockerfile
     autoDeploy: true
-    healthCheckPath: /health
+    healthCheckPath: /health/live
     envVars:
       - key: ENVIRONMENT
         value: production
