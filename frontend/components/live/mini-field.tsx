@@ -1,84 +1,132 @@
 "use client";
 
-import type { LiveTeam, MatchEventDetail, MatchEventType } from "@/lib/types";
+import type { LiveTeam, MatchEventDetail, MatchEventType, LiveTeamPlayer } from "@/lib/types";
 
 
-type EventStats = { goals: number; assists: number; yellowCards: number; redCards: number };
+/* ── Stats ───────────────────────────────────────────────── */
+type Stats = { goals: number; assists: number; yellowCards: number; redCards: number };
 
-function buildEventStats(events: MatchEventDetail[]): Map<string, EventStats> {
-  const blank = (): EventStats => ({ goals: 0, assists: 0, yellowCards: 0, redCards: 0 });
-  const map = new Map<string, EventStats>();
+function buildStats(events: MatchEventDetail[]): Map<string, Stats> {
+  const z = (): Stats => ({ goals: 0, assists: 0, yellowCards: 0, redCards: 0 });
+  const m = new Map<string, Stats>();
   for (const e of events.filter((ev) => !ev.is_reverted)) {
-    if (e.event_type === "GOAL" && e.player_id) {
-      const s = map.get(e.player_id) ?? blank(); s.goals++; map.set(e.player_id, s);
-    }
-    if (e.event_type === "ASSIST" && e.player_id) {
-      const s = map.get(e.player_id) ?? blank(); s.assists++; map.set(e.player_id, s);
-    }
-    if (e.event_type === "YELLOW_CARD" && e.player_id) {
-      const s = map.get(e.player_id) ?? blank(); s.yellowCards++; map.set(e.player_id, s);
-    }
-    if (e.event_type === "RED_CARD" && e.player_id) {
-      const s = map.get(e.player_id) ?? blank(); s.redCards++; map.set(e.player_id, s);
-    }
+    if (e.event_type === "GOAL"        && e.player_id) { const s = m.get(e.player_id) ?? z(); s.goals++;       m.set(e.player_id, s); }
+    if (e.event_type === "ASSIST"      && e.player_id) { const s = m.get(e.player_id) ?? z(); s.assists++;     m.set(e.player_id, s); }
+    if (e.event_type === "YELLOW_CARD" && e.player_id) { const s = m.get(e.player_id) ?? z(); s.yellowCards++; m.set(e.player_id, s); }
+    if (e.event_type === "RED_CARD"    && e.player_id) { const s = m.get(e.player_id) ?? z(); s.redCards++;    m.set(e.player_id, s); }
   }
-  return map;
+  return m;
 }
 
-// Home: bottom half (top 54–92%). Away: mirrored to top half.
-const HOME_SLOTS = [
-  { top: "90%", left: "50%" },   // GK
-  { top: "76%", left: "20%" },
-  { top: "76%", left: "50%" },
-  { top: "76%", left: "80%" },
-  { top: "63%", left: "14%" },
-  { top: "63%", left: "36%" },
-  { top: "63%", left: "64%" },
-  { top: "63%", left: "86%" },
-  { top: "54%", left: "33%" },
-  { top: "54%", left: "67%" },
-];
+/* ── Position grouping ───────────────────────────────────── */
+type PosGroup = "gk" | "def" | "mid" | "fwd";
 
-function mirror(s: { top: string; left: string }) {
-  return {
-    top: `${100 - parseFloat(s.top)}%`,
-    left: `${100 - parseFloat(s.left)}%`,
-  };
+function classify(pos: string | null | undefined): PosGroup {
+  const p = (pos ?? "").toUpperCase();
+  if (/GOL|GK/.test(p)) return "gk";
+  if (/ZAG|LAT|DEF|LIB|CB|FB|LD|LE/.test(p)) return "def";
+  if (/MEI|VOL|MID|MEC|CM|MC/.test(p)) return "mid";
+  if (/ATA|ATK|FWD|CA|SS|CF|LW|RW/.test(p)) return "fwd";
+  return "mid";
 }
 
-function resolveSlots(count: number, side: "home" | "away") {
-  const base = side === "home" ? HOME_SLOTS : HOME_SLOTS.map(mirror);
-  if (count <= base.length) return base.slice(0, count);
-  return [
-    ...base,
-    ...Array.from({ length: count - base.length }, (_, i) => ({
-      top: side === "home" ? `${46 - i * 6}%` : `${54 + i * 6}%`,
-      left: i % 2 === 0 ? "42%" : "58%",
-    })),
-  ];
+function groupByPos(players: LiveTeamPlayer[]): Record<PosGroup, LiveTeamPlayer[]> {
+  const g: Record<PosGroup, LiveTeamPlayer[]> = { gk: [], def: [], mid: [], fwd: [] };
+  for (const p of players) g[classify(p.position)].push(p);
+  return g;
 }
 
-function initials(name: string, nickname?: string | null) {
-  if (nickname) return nickname.slice(0, 3);
-  const parts = name.trim().split(" ");
-  if (parts.length === 1) return parts[0].slice(0, 3).toUpperCase();
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+// Returns formation rows top→bottom for the given half
+function getRows(players: LiveTeamPlayer[], side: "home" | "away"): LiveTeamPlayer[][] {
+  const hasPos = players.some((p) => !!p.position);
+
+  if (!hasPos) {
+    // No position data: split into 3 roughly equal rows
+    const n = players.length;
+    const a = Math.ceil(n / 3);
+    const b = Math.ceil((n - a) / 2);
+    const rows = [players.slice(0, a), players.slice(a, a + b), players.slice(a + b)];
+    return side === "home" ? rows : [...rows].reverse();
+  }
+
+  const g = groupByPos(players);
+  // home: FWD → MID → DEF → GK  (attack faces up, GK at bottom)
+  // away: GK → DEF → MID → FWD  (attack faces down, GK at top)
+  const order: PosGroup[] = side === "home"
+    ? ["fwd", "mid", "def", "gk"]
+    : ["gk", "def", "mid", "fwd"];
+  return order.map((k) => g[k]).filter((r) => r.length > 0);
 }
 
-function firstName(name: string, nickname?: string | null) {
-  if (nickname) return nickname;
-  return name.trim().split(" ")[0];
+function shortName(player: LiveTeamPlayer) {
+  if (player.player_nickname) return player.player_nickname.slice(0, 10);
+  const parts = player.player_name.trim().split(" ");
+  return parts[0].slice(0, 10);
 }
 
-function EventBadge({ stats }: { stats: EventStats }) {
-  if (stats.redCards)    return <span className="absolute -right-1 -top-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-red-500 text-[7px] font-bold text-white shadow-md">✕</span>;
-  if (stats.yellowCards) return <span className="absolute -right-1 -top-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-yellow-400 text-[7px] font-bold text-[#1a1a00] shadow-md">!</span>;
-  if (stats.goals)       return <span className="absolute -right-1 -top-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-emerald-500 text-[7px] shadow-md">⚽</span>;
-  if (stats.assists)     return <span className="absolute -right-1 -top-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-sky-500 text-[7px] shadow-md">A</span>;
+function posLabel(pos: string | null | undefined) {
+  return (pos ?? "?").toUpperCase().slice(0, 3);
+}
+
+/* ── Stat badge ──────────────────────────────────────────── */
+function StatBadge({ s }: { s: Stats }) {
+  if (s.redCards)    return <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[8px] font-black text-white ring-1 ring-black/40">✕</span>;
+  if (s.yellowCards) return <span className="absolute -right-0.5 -top-0.5 h-4 w-4 rounded bg-yellow-400 ring-1 ring-black/40" />;
+  if (s.goals)       return <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-white/90 text-[9px] ring-1 ring-black/20">⚽</span>;
   return null;
 }
 
+/* ── Player dot ──────────────────────────────────────────── */
+function PlayerDot({
+  player,
+  side,
+  stats,
+  clickable,
+  highlighted,
+  onClick,
+}: {
+  player: LiveTeamPlayer;
+  side: "home" | "away";
+  stats: Stats;
+  clickable: boolean;
+  highlighted: boolean;
+  onClick: () => void;
+}) {
+  const base = side === "home"
+    ? "bg-emerald-700 border-emerald-300/80 shadow-[0_2px_8px_rgba(0,0,0,0.4)]"
+    : "bg-sky-700 border-sky-300/80 shadow-[0_2px_8px_rgba(0,0,0,0.4)]";
 
+  const lit = side === "home"
+    ? "bg-emerald-500 border-white shadow-[0_0_14px_rgba(74,222,128,0.5)]"
+    : "bg-sky-500 border-white shadow-[0_0_14px_rgba(96,165,250,0.5)]";
+
+  return (
+    <div className="flex flex-col items-center gap-1">
+      <button
+        type="button"
+        disabled={!clickable}
+        onClick={onClick}
+        title={player.player_name}
+        className={[
+          "relative flex h-11 w-11 items-center justify-center rounded-full border-2 text-[11px] font-extrabold text-white transition-all duration-150",
+          highlighted ? lit : base,
+          clickable
+            ? "cursor-pointer hover:scale-[1.12] hover:border-white hover:brightness-125"
+            : "cursor-default opacity-80",
+        ].join(" ")}
+      >
+        {posLabel(player.position)}
+        <StatBadge s={stats} />
+      </button>
+      <span className="max-w-[48px] truncate text-center text-[9px] font-semibold leading-none text-white/65">
+        {shortName(player)}
+      </span>
+    </div>
+  );
+}
+
+
+/* ── Main export ─────────────────────────────────────────── */
 export function MiniField({
   teams,
   events,
@@ -97,117 +145,106 @@ export function MiniField({
   onSelectPlayer: (playerId: string, teamId: string) => void;
 }) {
   const [homeTeam, awayTeam] = teams;
-  const stats = buildEventStats(events);
-
+  const stats = buildStats(events);
   const clickable = !disabled && !!activeAction;
+
+  const homeRows = homeTeam ? getRows(homeTeam.players, "home") : [];
+  const awayRows = awayTeam ? getRows(awayTeam.players, "away") : [];
+
+  // Attach teamId to each player so the generic handler can pass it up
+  function tagTeam(players: LiveTeamPlayer[], teamId: string) {
+    return players.map((p) => Object.assign({}, p, { _teamId: teamId }));
+  }
+
+  function renderRows(rows: LiveTeamPlayer[][], teamId: string, side: "home" | "away") {
+    return rows.map((row, i) => (
+      <div key={i} className="flex justify-center gap-2">
+        {tagTeam(row, teamId).map((p) => (
+          <PlayerDot
+            key={p.player_id}
+            player={p}
+            side={side}
+            stats={stats.get(p.player_id) ?? { goals: 0, assists: 0, yellowCards: 0, redCards: 0 }}
+            clickable={clickable && (selectedTeamId === null || selectedTeamId === teamId)}
+            highlighted={highlightedPlayerId === p.player_id}
+            onClick={() => onSelectPlayer(p.player_id, teamId)}
+          />
+        ))}
+      </div>
+    ));
+  }
 
   return (
     <div
       className="relative overflow-hidden rounded-2xl border border-white/8"
       style={{
-        height: 240,
-        background: "linear-gradient(180deg, #0a2018 0%, #0d2a1e 50%, #0a2018 100%)",
+        background: "linear-gradient(180deg,#1b5e2e 0%,#1e6e34 30%,#1a6630 50%,#1e6e34 70%,#1b5e2e 100%)",
       }}
     >
-      {/* ─── Field lines ─── */}
+      {/* ─── Field lines (SVG) ─── */}
       <svg
-        className="pointer-events-none absolute inset-0"
-        width="100%"
-        height="100%"
-        viewBox="0 0 400 240"
+        className="pointer-events-none absolute inset-0 h-full w-full"
+        viewBox="0 0 100 100"
         preserveAspectRatio="none"
       >
-        {/* Midfield line */}
-        <line x1="0" y1="120" x2="400" y2="120" stroke="rgba(255,255,255,0.12)" strokeWidth="1" />
-        {/* Center circle */}
-        <circle cx="200" cy="120" r="36" fill="none" stroke="rgba(255,255,255,0.10)" strokeWidth="1" />
-        {/* Center spot */}
-        <circle cx="200" cy="120" r="2.5" fill="rgba(255,255,255,0.2)" />
-        {/* Home penalty box */}
-        <rect x="110" y="185" width="180" height="55" fill="none" stroke="rgba(255,255,255,0.10)" strokeWidth="1" />
-        {/* Away penalty box */}
-        <rect x="110" y="0" width="180" height="55" fill="none" stroke="rgba(255,255,255,0.10)" strokeWidth="1" />
-        {/* Home goal */}
-        <rect x="155" y="228" width="90" height="12" fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="1" />
-        {/* Away goal */}
-        <rect x="155" y="0" width="90" height="12" fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="1" />
         {/* Outer border */}
-        <rect x="1" y="1" width="398" height="238" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="1" />
+        <rect x="2" y="1.5" width="96" height="97" rx="1" fill="none" stroke="rgba(255,255,255,0.14)" strokeWidth="0.5" />
+        {/* Halfway line */}
+        <line x1="2" y1="50" x2="98" y2="50" stroke="rgba(255,255,255,0.18)" strokeWidth="0.5" />
+        {/* Center circle */}
+        <circle cx="50" cy="50" r="12" fill="none" stroke="rgba(255,255,255,0.14)" strokeWidth="0.5" />
+        {/* Center spot */}
+        <circle cx="50" cy="50" r="1" fill="rgba(255,255,255,0.25)" />
+        {/* Home penalty area */}
+        <rect x="22" y="78" width="56" height="20" rx="0.5" fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="0.4" />
+        {/* Away penalty area */}
+        <rect x="22" y="2" width="56" height="20" rx="0.5" fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="0.4" />
+        {/* Home goal */}
+        <rect x="37" y="96" width="26" height="3" rx="0.5" fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth="0.5" />
+        {/* Away goal */}
+        <rect x="37" y="1" width="26" height="3" rx="0.5" fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth="0.5" />
+        {/* Alternating grass stripes (subtle) */}
+        {[0,2,4,6,8].map((i) => (
+          <rect key={i} x="0" y={i * 10} width="100" height="10" fill="rgba(0,0,0,0.04)" />
+        ))}
       </svg>
 
-      {/* ─── Team labels ─── */}
-      {homeTeam && (
-        <span className="pointer-events-none absolute bottom-1.5 left-2 text-[9px] font-bold uppercase tracking-[0.18em] text-emerald-300/50">
-          {homeTeam.name}
-        </span>
-      )}
-      {awayTeam && (
-        <span className="pointer-events-none absolute left-2 top-1.5 text-[9px] font-bold uppercase tracking-[0.18em] text-sky-300/50">
-          {awayTeam.name}
-        </span>
-      )}
+      {/* ─── Content ─── */}
+      <div className="relative flex flex-col gap-3 px-4 py-4">
+        {/* Away team label */}
+        {awayTeam && (
+          <p className="text-center text-[9px] font-bold uppercase tracking-[0.22em] text-sky-200/60">
+            {awayTeam.name}
+          </p>
+        )}
 
-      {/* ─── Players ─── */}
-      {[
-        ...(homeTeam ? homeTeam.players.map((p, i) => ({ player: p, side: "home" as const, teamId: homeTeam.id, slot: resolveSlots(homeTeam.players.length, "home")[i] })) : []),
-        ...(awayTeam ? awayTeam.players.map((p, i) => ({ player: p, side: "away" as const, teamId: awayTeam.id, slot: resolveSlots(awayTeam.players.length, "away")[i] })) : []),
-      ].map(({ player, side, teamId, slot }) => {
-        if (!slot) return null;
-
-        const playerStats = stats.get(player.player_id) ?? { goals: 0, assists: 0, yellowCards: 0, redCards: 0 };
-        const isHighlighted = highlightedPlayerId === player.player_id;
-        const isTeamSelected = selectedTeamId === teamId;
-
-        const baseColor = side === "home"
-          ? "border-emerald-400/40 bg-emerald-900/60 text-emerald-100"
-          : "border-sky-400/40 bg-sky-900/60 text-sky-100";
-
-        const highlightColor = "border-white/60 bg-white/20 text-white scale-110";
-        const dimColor = side === "home"
-          ? "border-emerald-400/20 bg-emerald-900/30 text-emerald-200/50"
-          : "border-sky-400/20 bg-sky-900/30 text-sky-200/50";
-
-        let nodeClass = baseColor;
-        if (isHighlighted) nodeClass = highlightColor;
-        else if (selectedTeamId && !isTeamSelected) nodeClass = dimColor;
-
-        return (
-          <button
-            key={player.player_id}
-            type="button"
-            disabled={!clickable}
-            onClick={() => onSelectPlayer(player.player_id, teamId)}
-            className={[
-              "group absolute -translate-x-1/2 -translate-y-1/2 transition-all duration-150",
-              clickable ? "cursor-pointer hover:scale-110 hover:z-20" : "cursor-default",
-              isHighlighted ? "z-20" : "z-10",
-            ].join(" ")}
-            style={{ top: slot.top, left: slot.left }}
-            title={player.player_name}
-          >
-            <span className={[
-              "relative flex h-7 w-7 items-center justify-center rounded-full border text-[9px] font-extrabold shadow-md transition-all",
-              nodeClass,
-            ].join(" ")}>
-              {initials(player.player_name, player.player_nickname)}
-              <EventBadge stats={playerStats} />
-            </span>
-            {/* Tooltip name on hover */}
-            <span className="pointer-events-none absolute bottom-full left-1/2 mb-1 hidden -translate-x-1/2 whitespace-nowrap rounded-lg border border-white/10 bg-black/80 px-2 py-1 text-[10px] font-semibold text-white shadow-xl group-hover:block">
-              {firstName(player.player_name, player.player_nickname)}
-            </span>
-          </button>
-        );
-      })}
-
-      {/* ─── Overlay hint when no action selected ─── */}
-      {!activeAction && !disabled && (
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center pb-3">
-          <span className="rounded-full border border-white/10 bg-black/40 px-3 py-1 text-[10px] text-white/30 backdrop-blur-sm">
-            selecione um evento para usar o campo
-          </span>
+        {/* Away rows (top half) */}
+        <div className="flex flex-col gap-3">
+          {awayTeam ? renderRows(awayRows, awayTeam.id, "away") : null}
         </div>
-      )}
+
+        {/* Midfield divider */}
+        <div className="mx-auto w-8 border-t border-white/20" />
+
+        {/* Home rows (bottom half) */}
+        <div className="flex flex-col gap-3">
+          {homeTeam ? renderRows(homeRows, homeTeam.id, "home") : null}
+        </div>
+
+        {/* Home team label */}
+        {homeTeam && (
+          <p className="text-center text-[9px] font-bold uppercase tracking-[0.22em] text-emerald-200/60">
+            {homeTeam.name}
+          </p>
+        )}
+
+        {/* No-action hint */}
+        {!activeAction && !disabled && (
+          <p className="text-center text-[10px] text-white/25">
+            selecione um evento para registrar no campo
+          </p>
+        )}
+      </div>
     </div>
   );
 }
