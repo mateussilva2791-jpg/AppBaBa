@@ -2,13 +2,13 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Users, Activity, Trophy, UserX, RefreshCw, LogOut } from "lucide-react";
+import { Activity, Trophy, UserX, RefreshCw, LogOut } from "lucide-react";
 
 import { apiRequest } from "@/lib/api";
 import { clearToken, getToken } from "@/lib/auth";
 import type { AuthenticatedUser } from "@/lib/types";
 
-const DEV_EMAIL = "mateussilva2791@gmail.com";
+const DEV_EMAIL = process.env.NEXT_PUBLIC_ADMIN_EMAIL ?? "mateussilva2791@gmail.com";
 
 type BetaUser = {
   id: string;

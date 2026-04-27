@@ -33,6 +33,7 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("CORS_ALLOWED_ORIGINS", "CORS_ORIGINS"),
     )
     allowed_hosts: Annotated[list[str], NoDecode] = Field(default_factory=list)
+    admin_email: str = Field(default="mateussilva2791@gmail.com")
 
     smtp_host: str = Field(default="smtp.gmail.com")
     smtp_port: int = Field(default=587)

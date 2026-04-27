@@ -3,18 +3,17 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
+from app.core.config import get_settings
 from app.db.session import get_db
 from app.models.league import LeagueMember
 from app.models.user import User
 
 
-DEV_EMAIL = "mateussilva2791@gmail.com"
-
 router = APIRouter(prefix="/dev", tags=["dev"])
 
 
 def _require_dev(current_user: User = Depends(get_current_user)) -> User:
-    if current_user.email != DEV_EMAIL:
+    if current_user.email != get_settings().admin_email:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Acesso restrito ao desenvolvedor")
     return current_user
 
