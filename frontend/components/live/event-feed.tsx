@@ -1,8 +1,19 @@
-import { Clock3, RotateCcw } from "lucide-react";
+import { RotateCcw } from "lucide-react";
 
 import { describeEvent, formatEventMoment, getEventLabel } from "@/lib/live";
 import type { MatchEventDetail } from "@/lib/types";
 
+const EVENT_EMOJI: Partial<Record<string, string>> = {
+  GOAL:                "⚽",
+  ASSIST:              "👟",
+  FOUL:                "🤚",
+  YELLOW_CARD:         "🟨",
+  RED_CARD:            "🟥",
+  MATCH_STARTED:       "▶",
+  HALF_TIME:           "//",
+  SECOND_HALF_STARTED: "▶▶",
+  MATCH_FINISHED:      "■",
+};
 
 export function EventFeed({
   events,
@@ -15,36 +26,54 @@ export function EventFeed({
 }) {
   if (!events.length) {
     return (
-      <div className="empty-card">
-        <strong className="text-base text-white">O feed ainda esta limpo.</strong>
-        <p className="mt-2 text-sm text-[--color-text-400]">Os eventos vao surgir em ordem cronologica assim que a cabine comecar a operar.</p>
+      <div className="rounded-[20px] border border-dashed border-white/8 bg-white/[0.02] px-4 py-8 text-center">
+        <p className="text-sm text-[--color-text-muted]">Nenhum evento ainda.</p>
       </div>
     );
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-1.5">
       {events.map((event) => (
-        <article key={event.id} className={`rounded-[24px] border border-white/8 bg-white/[0.03] p-4 ${event.is_reverted ? "opacity-45" : ""}`}>
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div className="space-y-2">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="inline-flex items-center gap-2 rounded-full bg-cyan-400/12 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-100">
-                  <Clock3 className="h-3.5 w-3.5" />
-                  {formatEventMoment(event)}
-                </span>
-                <span className="text-xs uppercase tracking-[0.18em] text-[--color-text-400]">{getEventLabel(event.event_type)}</span>
-              </div>
-              <p className="text-sm leading-6 text-[--color-text-300]">{describeEvent(event)}</p>
+        <div
+          key={event.id}
+          className={[
+            "flex items-start gap-3 rounded-xl border border-white/[0.05] bg-white/[0.025] px-3 py-2.5 transition-all",
+            event.is_reverted ? "opacity-35 line-through" : "",
+          ].join(" ")}
+        >
+          {/* Emoji */}
+          <span className="mt-0.5 shrink-0 text-base leading-none">
+            {EVENT_EMOJI[event.event_type] ?? "•"}
+          </span>
+
+          {/* Content */}
+          <div className="min-w-0 flex-1">
+            <div className="flex items-baseline gap-2">
+              <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-[--color-text-muted]">
+                {formatEventMoment(event)}
+              </span>
+              <span className="text-[10px] text-[--color-text-muted]">
+                {getEventLabel(event.event_type)}
+              </span>
             </div>
-            {editable && onRevert && !event.is_reverted ? (
-              <button type="button" className="btn-ghost" onClick={() => onRevert(event)}>
-                <RotateCcw className="h-4 w-4" />
-                Desfazer
-              </button>
-            ) : null}
+            <p className="mt-0.5 truncate text-sm font-medium text-white">
+              {describeEvent(event)}
+            </p>
           </div>
-        </article>
+
+          {/* Undo */}
+          {editable && onRevert && !event.is_reverted ? (
+            <button
+              type="button"
+              onClick={() => onRevert(event)}
+              className="shrink-0 rounded-lg border border-white/8 bg-white/[0.04] p-1.5 text-[--color-text-muted] transition hover:border-red-400/20 hover:bg-red-400/8 hover:text-red-300"
+              title="Desfazer"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+            </button>
+          ) : null}
+        </div>
       ))}
     </div>
   );

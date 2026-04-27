@@ -1,35 +1,79 @@
 "use client";
 
-import { Flag, Radar, Users } from "lucide-react";
+import { Timer, X, CheckCircle2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { EmptyLeagueState } from "@/components/league/empty-league-state";
 import { EventFeed } from "@/components/live/event-feed";
-import { LiveActionFlowSteps, LiveActionPanel } from "@/components/live/live-action-panel";
-import { LiveFootballField } from "@/components/live/live-football-field";
-import { LiveMatchReport } from "@/components/live/live-match-report";
-import { LivePlayerSpotlight } from "@/components/live/live-player-spotlight";
-import { LiveScoreboard } from "@/components/live/live-scoreboard";
 import { QuickConfirmationToast } from "@/components/live/quick-confirmation-toast";
-import { SectionHeader } from "@/components/ui/section-header";
-import { StatusBadge } from "@/components/ui/status-badge";
 import { apiRequest, WS_BASE_URL } from "@/lib/api";
 import { getToken } from "@/lib/auth";
-import { formatClock, getEventLabel, getMatchPeriodLabel, getPersistedMatchClockSeconds, getStatusLabel } from "@/lib/live";
+import {
+  formatClock,
+  getEventLabel,
+  getMatchPeriodLabel,
+  getPersistedMatchClockSeconds,
+  getStatusLabel,
+} from "@/lib/live";
 import { getLeagueBySlug } from "@/lib/league";
 import { getLiveTeamsForMatch } from "@/lib/session";
 import { getStatusTone } from "@/lib/ui";
-import type { League, LiveSocketEnvelope, MatchEventDetail, MatchEventType, MatchLiveState } from "@/lib/types";
+import type {
+  League,
+  LiveSocketEnvelope,
+  MatchEventDetail,
+  MatchEventType,
+  MatchLiveState,
+} from "@/lib/types";
 
 
 const FLOW_EVENTS = new Set<MatchEventType>(["GOAL", "ASSIST", "FOUL", "YELLOW_CARD", "RED_CARD"]);
+
 const MATCH_STATUS_BY_ACTION: Partial<Record<MatchEventType, string>> = {
   MATCH_STARTED: "LIVE",
   HALF_TIME: "HALF_TIME",
   SECOND_HALF_STARTED: "LIVE",
   MATCH_FINISHED: "FINISHED",
 };
+
+type EventAction = { type: MatchEventType; label: string; emoji: string; bg: string; activeBg: string; activeBorder: string };
+const EVENT_ACTIONS: EventAction[] = [
+  { type: "GOAL",        label: "Gol",      emoji: "⚽", bg: "rgba(52,211,153,0.06)",  activeBg: "rgba(52,211,153,0.14)",  activeBorder: "rgba(52,211,153,0.4)" },
+  { type: "ASSIST",      label: "Assist.",  emoji: "👟", bg: "rgba(96,165,250,0.06)",  activeBg: "rgba(96,165,250,0.14)",  activeBorder: "rgba(96,165,250,0.4)" },
+  { type: "FOUL",        label: "Falta",    emoji: "🤚", bg: "rgba(148,163,184,0.06)", activeBg: "rgba(148,163,184,0.14)", activeBorder: "rgba(148,163,184,0.35)" },
+  { type: "YELLOW_CARD", label: "Amarelo",  emoji: "🟨", bg: "rgba(250,204,21,0.06)",  activeBg: "rgba(250,204,21,0.14)",  activeBorder: "rgba(250,204,21,0.45)" },
+  { type: "RED_CARD",    label: "Vermelho", emoji: "🟥", bg: "rgba(248,113,113,0.06)", activeBg: "rgba(248,113,113,0.14)", activeBorder: "rgba(248,113,113,0.4)" },
+];
+
+type StatusAction = { type: MatchEventType; label: string; color: string };
+const STATUS_ACTIONS: StatusAction[] = [
+  { type: "MATCH_STARTED",       label: "Iniciar",    color: "#4ade80" },
+  { type: "HALF_TIME",           label: "Intervalo",  color: "#94a3b8" },
+  { type: "SECOND_HALF_STARTED", label: "2º Tempo",   color: "#60a5fa" },
+  { type: "MATCH_FINISHED",      label: "Encerrar",   color: "#f87171" },
+];
+
+const STATUS_ACTIONS_BY_MATCH_STATUS: Record<string, MatchEventType[]> = {
+  SCHEDULED:   ["MATCH_STARTED"],
+  NOT_STARTED: ["MATCH_STARTED"],
+  LIVE:        ["HALF_TIME", "MATCH_FINISHED"],
+  HALF_TIME:   ["SECOND_HALF_STARTED", "MATCH_FINISHED"],
+  FINISHED:    [],
+};
+
+const STATUS_ACTION_SEQUENCE: MatchEventType[] = [
+  "MATCH_STARTED", "HALF_TIME", "SECOND_HALF_STARTED", "MATCH_FINISHED",
+];
+
+const STATUS_TONE_CLASS: Record<string, string> = {
+  live: "bg-red-400/10 border-red-400/25 text-red-300",
+  info: "bg-sky-400/10 border-sky-400/25 text-sky-300",
+  warning: "bg-amber-400/10 border-amber-400/25 text-amber-300",
+  success: "bg-emerald-400/10 border-emerald-400/25 text-emerald-300",
+  neutral: "bg-white/[0.05] border-white/10 text-[--color-text-secondary]",
+};
+
 
 export default function MatchLivePage({ params }: { params: Promise<{ slug: string; matchId: string }> }) {
   const router = useRouter();
@@ -40,7 +84,6 @@ export default function MatchLivePage({ params }: { params: Promise<{ slug: stri
   const [toast, setToast] = useState("");
   const [activeAction, setActiveAction] = useState<MatchEventType | null>(null);
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
-  const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
   const [highlightedPlayerId, setHighlightedPlayerId] = useState<string | null>(null);
   const [hasNoLeague, setHasNoLeague] = useState(false);
   const [tickNowMs, setTickNowMs] = useState(Date.now());
@@ -53,14 +96,6 @@ export default function MatchLivePage({ params }: { params: Promise<{ slug: stri
     () => (state ? getLiveTeamsForMatch(state.teams, state.match.match) : []),
     [state],
   );
-  const selectedPlayer = useMemo(
-    () => matchTeams.flatMap((team) => team.players).find((player) => player.player_id === selectedPlayerId) ?? null,
-    [matchTeams, selectedPlayerId],
-  );
-  const selectedPlayerTeam = useMemo(
-    () => matchTeams.find((team) => team.players.some((player) => player.player_id === selectedPlayerId)) ?? null,
-    [matchTeams, selectedPlayerId],
-  );
 
   function applyIncomingState(nextState: MatchLiveState) {
     setState(nextState);
@@ -68,28 +103,25 @@ export default function MatchLivePage({ params }: { params: Promise<{ slug: stri
   }
 
   async function refreshMatchState(leagueId: string, matchId: string, authToken: string) {
-    const refreshedState = await apiRequest<MatchLiveState>(`/leagues/${leagueId}/matches/${matchId}/live`, { token: authToken });
-    applyIncomingState(refreshedState);
+    const next = await apiRequest<MatchLiveState>(
+      `/leagues/${leagueId}/matches/${matchId}/live`,
+      { token: authToken },
+    );
+    applyIncomingState(next);
   }
 
   async function loadState() {
     const currentToken = getToken();
-    if (!currentToken) {
-      router.replace("/login");
-      return;
-    }
-
+    if (!currentToken) { router.replace("/login"); return; }
     const { slug, matchId } = await params;
     const resolvedLeague = await getLeagueBySlug(currentToken, slug);
     if (!resolvedLeague) {
-      setHasNoLeague(true);
-      setLeague(null);
-      setState(null);
-      setError("");
-      return;
+      setHasNoLeague(true); setLeague(null); setState(null); setError(""); return;
     }
-    const liveState = await apiRequest<MatchLiveState>(`/leagues/${resolvedLeague.id}/matches/${matchId}/live`, { token: currentToken });
-
+    const liveState = await apiRequest<MatchLiveState>(
+      `/leagues/${resolvedLeague.id}/matches/${matchId}/live`,
+      { token: currentToken },
+    );
     setLeague(resolvedLeague);
     setHasNoLeague(false);
     applyIncomingState(liveState);
@@ -97,16 +129,14 @@ export default function MatchLivePage({ params }: { params: Promise<{ slug: stri
 
   useEffect(() => {
     void loadState()
-      .catch((loadError) => setError(loadError instanceof Error ? loadError.message : "Erro ao carregar a partida live."))
+      .catch((e) => setError(e instanceof Error ? e.message : "Erro ao carregar a partida live."))
       .finally(() => setLoading(false));
   }, [params, router]);
 
   useEffect(() => {
-    if (!running) {
-      return;
-    }
-    const interval = window.setInterval(() => setTickNowMs(Date.now()), 250);
-    return () => window.clearInterval(interval);
+    if (!running) return;
+    const id = window.setInterval(() => setTickNowMs(Date.now()), 250);
+    return () => window.clearInterval(id);
   }, [running]);
 
   const clockSeconds = useMemo(
@@ -115,128 +145,81 @@ export default function MatchLivePage({ params }: { params: Promise<{ slug: stri
   );
 
   useEffect(() => {
-    if (!league || !token || !state) {
-      return;
-    }
-
+    if (!league || !token || !state) return;
     const socket = new WebSocket(
       `${WS_BASE_URL}/api/leagues/${league.id}/matches/ws/${state.match.match.id}`,
     );
-    socket.onopen = () => {
-      socket.send(JSON.stringify({ type: "auth", token }));
+    socket.onopen = () => socket.send(JSON.stringify({ type: "auth", token }));
+    socket.onmessage = (ev) => {
+      const payload = JSON.parse(ev.data) as LiveSocketEnvelope<MatchLiveState>;
+      if (payload.type === "match.snapshot") applyIncomingState(payload.payload);
     };
-    socket.onmessage = (event) => {
-      const payload = JSON.parse(event.data) as LiveSocketEnvelope<MatchLiveState>;
-      if (payload.type === "match.snapshot") {
-        applyIncomingState(payload.payload);
-      }
-    };
-
     return () => socket.close();
   }, [league, state?.match.match.id, token]);
 
   useEffect(() => {
-    if (!toast) {
-      return;
-    }
-    const timeout = window.setTimeout(() => setToast(""), 2200);
-    return () => window.clearTimeout(timeout);
+    if (!toast) return;
+    const id = window.setTimeout(() => setToast(""), 2200);
+    return () => window.clearTimeout(id);
   }, [toast]);
 
   useEffect(() => {
-    if (!highlightedPlayerId) {
-      return;
-    }
-    const timeout = window.setTimeout(() => setHighlightedPlayerId(null), 1600);
-    return () => window.clearTimeout(timeout);
+    if (!highlightedPlayerId) return;
+    const id = window.setTimeout(() => setHighlightedPlayerId(null), 1600);
+    return () => window.clearTimeout(id);
   }, [highlightedPlayerId]);
 
   useEffect(() => {
-    if (!matchTeams.length) {
-      if (selectedTeamId !== null) {
-        setSelectedTeamId(null);
-      }
-      return;
-    }
-
-    if (!selectedTeamId || !matchTeams.some((team) => team.id === selectedTeamId)) {
+    if (!matchTeams.length) { if (selectedTeamId !== null) setSelectedTeamId(null); return; }
+    if (!selectedTeamId || !matchTeams.some((t) => t.id === selectedTeamId)) {
       setSelectedTeamId(matchTeams[0].id);
     }
   }, [matchTeams, selectedTeamId]);
 
-  function resetFlow() {
-    setActiveAction(null);
-    setSelectedTeamId(null);
-  }
+  function resetFlow() { setActiveAction(null); }
 
-  async function submitEvent(eventType: MatchEventType, teamId: string | null = null, playerId: string | null = null) {
-    if (!league || !state || !token) {
-      return;
-    }
-
+  async function submitEvent(
+    eventType: MatchEventType,
+    teamId: string | null = null,
+    playerId: string | null = null,
+  ) {
+    if (!league || !state || !token) return;
     try {
       setError("");
-      if (sessionClosed) {
-        setError("Sessao encerrada. O modo ao vivo esta bloqueado para novos eventos.");
-        return;
-      }
+      if (sessionClosed) { setError("Sessao encerrada."); return; }
       await apiRequest(`/leagues/${league.id}/matches/${state.match.match.id}/events`, {
-        method: "POST",
-        token,
+        method: "POST", token,
         body: {
-          event_type: eventType,
-          team_id: teamId,
-          player_id: playerId,
+          event_type: eventType, team_id: teamId, player_id: playerId,
           related_player_id: null,
-          minute: Math.floor(clockSeconds / 60),
-          second: clockSeconds % 60,
-          notes: null,
+          minute: Math.floor(clockSeconds / 60), second: clockSeconds % 60, notes: null,
         },
       });
       await refreshMatchState(league.id, state.match.match.id, token);
-      if (playerId) {
-        setHighlightedPlayerId(playerId);
-      }
+      if (playerId) setHighlightedPlayerId(playerId);
       setToast(`${getEventLabel(eventType)} registrado.`);
       resetFlow();
-    } catch (submissionError) {
-      setError(submissionError instanceof Error ? submissionError.message : "Nao foi possivel registrar o evento.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Nao foi possivel registrar o evento.");
     }
   }
 
   async function submitStatusAction(action: MatchEventType) {
-    if (!league || !state || !token) {
-      return;
-    }
-
+    if (!league || !state || !token) return;
     const nextStatus = MATCH_STATUS_BY_ACTION[action];
     if (nextStatus && state.match.match.status === nextStatus) {
-      setToast(`${getEventLabel(action)} ja aplicado.`);
-      return;
+      setToast(`${getEventLabel(action)} ja aplicado.`); return;
     }
-
     try {
       setError("");
-      if (sessionClosed) {
-        setError("Sessao encerrada. O modo ao vivo esta bloqueado para novos eventos.");
-        return;
-      }
+      if (sessionClosed) { setError("Sessao encerrada."); return; }
       const endpoint =
-        action === "MATCH_STARTED"
-          ? "start"
-          : action === "HALF_TIME"
-            ? "half-time"
-            : action === "SECOND_HALF_STARTED"
-              ? "second-half"
-              : "finish";
+        action === "MATCH_STARTED"       ? "start"       :
+        action === "HALF_TIME"           ? "half-time"   :
+        action === "SECOND_HALF_STARTED" ? "second-half" : "finish";
       await apiRequest(`/leagues/${league.id}/matches/${state.match.match.id}/${endpoint}`, {
-        method: "POST",
-        token,
-        body: {
-          minute: Math.floor(clockSeconds / 60),
-          second: clockSeconds % 60,
-          notes: null,
-        },
+        method: "POST", token,
+        body: { minute: Math.floor(clockSeconds / 60), second: clockSeconds % 60, notes: null },
       });
       await refreshMatchState(league.id, state.match.match.id, token);
       setToast(`${getEventLabel(action)} aplicado.`);
@@ -245,221 +228,312 @@ export default function MatchLivePage({ params }: { params: Promise<{ slug: stri
         const { slug } = await params;
         router.push(`/league/${slug}/match?session=${state.session.id}`);
       }
-    } catch (submissionError) {
-      setError(submissionError instanceof Error ? submissionError.message : "Nao foi possivel atualizar o status.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Nao foi possivel atualizar o status.");
     }
   }
 
   function handlePickAction(action: MatchEventType) {
-    if (FLOW_EVENTS.has(action)) {
-      setActiveAction(action);
-      setSelectedTeamId(null);
-      return;
-    }
+    if (FLOW_EVENTS.has(action)) { setActiveAction(action); return; }
     void submitStatusAction(action);
   }
 
-  function handlePickTeam(teamId: string) {
-    setSelectedTeamId(teamId);
-  }
-
   function handlePickPlayer(playerId: string) {
-    if (!activeAction || !selectedTeamId) {
-      setSelectedPlayerId(playerId);
-      return;
-    }
-    setSelectedPlayerId(playerId);
+    if (!activeAction || !selectedTeamId) return;
     void submitEvent(activeAction, selectedTeamId, playerId);
   }
 
-  function handlePickFieldPlayer(playerId: string, teamId: string) {
-    setSelectedTeamId(teamId);
-    setSelectedPlayerId(playerId);
-    if (!activeAction) {
-      return;
-    }
-    void submitEvent(activeAction, teamId, playerId);
-  }
-
   async function handleRevertEvent(event: MatchEventDetail) {
-    if (!league || !state || !token) {
-      return;
-    }
-
+    if (!league || !state || !token) return;
     try {
       setError("");
-      if (sessionClosed) {
-        setError("Sessao encerrada. Eventos nao podem mais ser revertidos.");
-        return;
-      }
+      if (sessionClosed) { setError("Sessao encerrada."); return; }
       await apiRequest(`/leagues/${league.id}/matches/${state.match.match.id}/events/${event.id}/revert`, {
-        method: "POST",
-        token,
+        method: "POST", token,
       });
       await refreshMatchState(league.id, state.match.match.id, token);
       setToast("Evento desfeito.");
-    } catch (submissionError) {
-      setError(submissionError instanceof Error ? submissionError.message : "Nao foi possivel desfazer o evento.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Nao foi possivel desfazer o evento.");
     }
   }
 
   if (loading) {
-    return <div className="space-y-6"><div className="page-card h-56" /><div className="page-card h-[640px]" /></div>;
+    return (
+      <div className="space-y-4">
+        <div className="h-16 animate-pulse rounded-[22px] bg-white/[0.04]" />
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.4fr)_380px]">
+          <div className="space-y-3">
+            {[80, 120, 280].map((h) => (
+              <div key={h} className="animate-pulse rounded-[22px] bg-white/[0.04]" style={{ height: h }} />
+            ))}
+          </div>
+          <div className="h-[500px] animate-pulse rounded-[22px] bg-white/[0.04]" />
+        </div>
+      </div>
+    );
   }
 
-  if (hasNoLeague) {
-    return <EmptyLeagueState />;
-  }
-
+  if (hasNoLeague) return <EmptyLeagueState />;
   if (!state) {
-    return <div className="page-card"><p className="text-sm text-[--color-text-400]">Nenhuma partida encontrada.</p></div>;
+    return (
+      <div className="page-card">
+        <p className="text-sm text-[--color-text-400]">Nenhuma partida encontrada.</p>
+      </div>
+    );
   }
+
+  const disabled = sessionClosed || state.match.match.status === "FINISHED";
+  const selectedTeam = matchTeams.find((t) => t.id === selectedTeamId) ?? null;
+
+  const completedStatusSet = new Set(
+    state.events
+      .filter((e) => !e.is_reverted)
+      .map((e) => e.event_type)
+      .filter((t) => STATUS_ACTION_SEQUENCE.includes(t as MatchEventType)),
+  );
+
+  let availableStatusActions: MatchEventType[] =
+    STATUS_ACTIONS_BY_MATCH_STATUS[state.match.match.status] ?? [];
+  if (completedStatusSet.has("MATCH_FINISHED"))        availableStatusActions = [];
+  else if (completedStatusSet.has("SECOND_HALF_STARTED")) availableStatusActions = ["MATCH_FINISHED"];
+  else if (completedStatusSet.has("HALF_TIME"))           availableStatusActions = ["SECOND_HALF_STARTED", "MATCH_FINISHED"];
+  else if (completedStatusSet.has("MATCH_STARTED"))       availableStatusActions = ["HALF_TIME", "MATCH_FINISHED"];
+
+  const tone = getStatusTone(state.match.match.status);
+  const badgeClass = STATUS_TONE_CLASS[tone] ?? STATUS_TONE_CLASS.neutral;
 
   return (
-    <div className="space-y-6">
-      {error ? <p className="rounded-2xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-200">{error}</p> : null}
-      {sessionClosed ? <p className="rounded-2xl border border-amber-400/20 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">Sessao encerrada. Esta cabine esta em modo de leitura.</p> : null}
+    <div className="flex flex-col gap-4">
+      {/* ── Alerts ── */}
+      {error ? (
+        <p className="rounded-2xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-200">
+          {error}
+        </p>
+      ) : null}
+      {sessionClosed ? (
+        <p className="rounded-2xl border border-amber-400/20 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">
+          Sessao encerrada — modo de leitura.
+        </p>
+      ) : null}
 
-      <LiveScoreboard
-        homeName={state.match.home_team_name}
-        awayName={state.match.away_team_name}
-        homeScore={state.match.match.home_score}
-        awayScore={state.match.match.away_score}
-        status={getStatusLabel(state.match.match.status)}
-        period={getMatchPeriodLabel(state.match.match.current_period)}
-        clock={formatClock(clockSeconds)}
-        context={`Cabine pronta para operar ${state.session.title} com feed, placar e eventos em fluxo curto.`}
-      />
+      {/* ── Scoreboard bar ── */}
+      <div className="page-header !py-4 !px-5">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          {/* Left: status + clock */}
+          <div className="flex items-center gap-3">
+            <span
+              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[10px] font-bold uppercase tracking-[0.22em] ${badgeClass}`}
+            >
+              {state.match.match.status === "LIVE" && (
+                <span className="live-pill-dot" />
+              )}
+              {getStatusLabel(state.match.match.status)}
+            </span>
+            <div className="flex items-center gap-1.5 rounded-xl border border-white/8 bg-white/[0.04] px-3 py-1.5">
+              <Timer className="h-3.5 w-3.5 text-[--color-text-muted]" />
+              <span className="font-mono text-sm font-bold text-white">
+                {formatClock(clockSeconds)}
+              </span>
+            </div>
+            <span className="hidden text-xs text-[--color-text-muted] sm:inline">
+              {getMatchPeriodLabel(state.match.match.current_period)}
+            </span>
+          </div>
 
-      <LiveActionPanel
-        teams={state.teams}
-        match={state.match.match}
-        events={state.events}
-        activeAction={activeAction}
-        selectedTeamId={selectedTeamId}
-        disabled={sessionClosed || state.match.match.status === "FINISHED"}
-        showFlowSteps={false}
-        onPickAction={handlePickAction}
-        onPickTeam={handlePickTeam}
-        onPickPlayer={handlePickPlayer}
-      />
+          {/* Right: score */}
+          <div className="flex items-center gap-4">
+            <div className="text-right">
+              <p className="text-[10px] uppercase tracking-[0.22em] text-[--color-text-muted]">Casa</p>
+              <p className="text-base font-bold text-white">{state.match.home_team_name}</p>
+            </div>
+            <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-5 py-2.5">
+              <span className="font-[family-name:var(--font-manrope)] text-3xl font-extrabold leading-none text-white">
+                {state.match.match.home_score}
+              </span>
+              <span className="text-lg text-[--color-text-muted]">–</span>
+              <span className="font-[family-name:var(--font-manrope)] text-3xl font-extrabold leading-none text-white">
+                {state.match.match.away_score}
+              </span>
+            </div>
+            <div>
+              <p className="text-[10px] uppercase tracking-[0.22em] text-[--color-text-muted]">Visitante</p>
+              <p className="text-base font-bold text-white">{state.match.away_team_name}</p>
+            </div>
+          </div>
+        </div>
+      </div>
 
-      <section className="grid gap-6 xl:grid-cols-[minmax(0,1.12fr)_minmax(320px,0.88fr)]">
-        <LiveFootballField
-          teams={matchTeams}
-          selectedTeamId={selectedTeamId}
-          events={state.events}
-          action={activeAction}
-          disabled={sessionClosed || state.match.match.status === "FINISHED"}
-          highlightedPlayerId={highlightedPlayerId}
-          onSelectPlayer={handlePickFieldPlayer}
-        />
+      {/* ── Main 2-col layout ── */}
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.4fr)_380px]">
 
-        <LiveMatchReport events={state.events} />
-      </section>
+        {/* ═══ LEFT: Action flow ═══ */}
+        <div className="space-y-3">
 
-      <LiveActionFlowSteps
-        teams={state.teams}
-        match={state.match.match}
-        events={state.events}
-        activeAction={activeAction}
-        selectedTeamId={selectedTeamId}
-        disabled={sessionClosed || state.match.match.status === "FINISHED"}
-        onPickAction={handlePickAction}
-        onPickTeam={handlePickTeam}
-        onPickPlayer={handlePickPlayer}
-      />
+          {/* Match controls */}
+          <div className="page-card !p-4">
+            <p className="eyebrow mb-3">Controle da partida</p>
+            <div className="flex flex-wrap gap-2">
+              {STATUS_ACTIONS.map((action) => {
+                const enabled = availableStatusActions.includes(action.type);
+                const done = completedStatusSet.has(action.type as MatchEventType);
+                return (
+                  <button
+                    key={action.type}
+                    type="button"
+                    disabled={disabled || !enabled || done}
+                    onClick={() => void submitStatusAction(action.type)}
+                    style={
+                      enabled && !done
+                        ? { borderColor: `${action.color}44`, color: action.color, background: `${action.color}14` }
+                        : undefined
+                    }
+                    className={[
+                      "flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-semibold transition-all",
+                      done
+                        ? "border-white/8 bg-white/[0.03] text-[--color-text-muted] opacity-50"
+                        : enabled
+                          ? "hover:opacity-80"
+                          : "border-white/6 bg-white/[0.02] text-[--color-text-muted] opacity-30 cursor-not-allowed",
+                    ].join(" ")}
+                  >
+                    {done && <CheckCircle2 className="h-3.5 w-3.5" />}
+                    {action.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
 
-      <LivePlayerSpotlight
-        player={selectedPlayer}
-        team={selectedPlayerTeam}
-        events={state.events}
-      />
+          {/* Event type selector */}
+          <div className="page-card !p-4">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <p className="eyebrow">O que aconteceu?</p>
+              {activeAction ? (
+                <button
+                  type="button"
+                  onClick={resetFlow}
+                  className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs text-[--color-text-muted] transition hover:text-white"
+                >
+                  <X className="h-3 w-3" />
+                  Limpar
+                </button>
+              ) : null}
+            </div>
+            <div className="grid grid-cols-5 gap-2">
+              {EVENT_ACTIONS.map((action) => {
+                const active = activeAction === action.type;
+                return (
+                  <button
+                    key={action.type}
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => handlePickAction(action.type)}
+                    style={
+                      active
+                        ? { background: action.activeBg, borderColor: action.activeBorder }
+                        : { background: action.bg, borderColor: "rgba(255,255,255,0.08)" }
+                    }
+                    className={[
+                      "flex flex-col items-center gap-2 rounded-2xl border py-4 transition-all",
+                      active ? "scale-[1.03] shadow-lg" : "hover:border-white/14 hover:scale-[1.02]",
+                      disabled ? "pointer-events-none opacity-40" : "",
+                    ].join(" ")}
+                  >
+                    <span className="text-2xl leading-none">{action.emoji}</span>
+                    <span className="text-[11px] font-bold text-white">{action.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
 
-      <section className="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(360px,0.9fr)]">
-        <div className="page-card">
-          <SectionHeader eyebrow="Feed ao vivo" title="Linha operacional da partida" description="Tudo o que aconteceu em campo aparece aqui em ordem cronologica, com opcao de desfazer rapidamente." />
-          <div className="mt-6">
-            <EventFeed
-              events={state.events}
-              editable={!sessionClosed && state.match.match.status !== "FINISHED"}
-              onRevert={handleRevertEvent}
-            />
+          {/* Team + Player */}
+          <div className="page-card !p-4">
+            <p className="eyebrow mb-3">
+              {activeAction ? "Qual time?" : "Times"}
+            </p>
+
+            {/* Team tabs */}
+            <div className="flex gap-2">
+              {matchTeams.map((team) => {
+                const sel = team.id === selectedTeamId;
+                return (
+                  <button
+                    key={team.id}
+                    type="button"
+                    onClick={() => setSelectedTeamId(team.id)}
+                    className={[
+                      "flex-1 rounded-xl border py-2.5 text-sm font-semibold transition-all",
+                      sel
+                        ? "border-[--color-accent-primary]/30 bg-[--color-accent-primary]/10 text-[--color-accent-primary]"
+                        : "border-white/8 bg-white/[0.03] text-[--color-text-secondary] hover:bg-white/[0.06] hover:text-white",
+                    ].join(" ")}
+                  >
+                    {team.name}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Player grid */}
+            {selectedTeam ? (
+              <div className="mt-4">
+                <p className="eyebrow mb-3">
+                  {activeAction ? "Quem foi?" : `Elenco — ${selectedTeam.name}`}
+                </p>
+                {activeAction ? (
+                  <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+                    {selectedTeam.players.map((player) => (
+                      <button
+                        key={player.player_id}
+                        type="button"
+                        onClick={() => handlePickPlayer(player.player_id)}
+                        className={[
+                          "rounded-xl border border-white/8 bg-white/[0.03] px-3 py-2.5 text-left transition-all",
+                          "hover:border-[--color-accent-primary]/30 hover:bg-[--color-accent-primary]/8 hover:text-[--color-accent-primary]",
+                          highlightedPlayerId === player.player_id
+                            ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-300"
+                            : "",
+                        ].join(" ")}
+                      >
+                        <span className="block truncate text-sm font-semibold text-white">
+                          {player.player_name}
+                          {player.is_captain ? (
+                            <span className="ml-1 text-[10px] text-[--color-accent-primary]">C</span>
+                          ) : null}
+                        </span>
+                        <span className="text-[10px] text-[--color-text-muted]">
+                          {player.position ?? "Livre"}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="rounded-xl border border-white/6 bg-white/[0.02] px-4 py-4 text-center text-sm text-[--color-text-muted]">
+                    Selecione um evento para registrar um jogador.
+                  </p>
+                )}
+              </div>
+            ) : null}
           </div>
         </div>
 
-        <div className="space-y-6">
-          <section className="page-card">
-            <SectionHeader eyebrow="Pulso da partida" title="Contexto instantaneo" />
-            <div className="mt-6 grid gap-4">
-              <div className="surface-elevated p-5">
-                <div className="flex items-center gap-3">
-                  <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-cyan-400/12 text-cyan-100">
-                    <Radar className="h-5 w-5" />
-                  </span>
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.2em] text-[--color-text-400]">Status</p>
-                    <div className="mt-2 flex items-center gap-3">
-                      <strong className="text-xl text-white">{getStatusLabel(state.match.match.status)}</strong>
-                      <StatusBadge tone={getStatusTone(state.match.match.status)}>{state.match.match.status}</StatusBadge>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="surface-elevated p-5">
-                <div className="flex items-center gap-3">
-                  <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-400/12 text-emerald-100">
-                    <Flag className="h-5 w-5" />
-                  </span>
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.2em] text-[--color-text-400]">Ultimo evento</p>
-                    <strong className="mt-2 block text-white">
-                      {state.match.last_event ? `${getEventLabel(state.match.last_event.event_type)} • ${state.match.last_event.player_name ?? "geral"}` : "Partida sem ocorrencias ainda"}
-                    </strong>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <section className="page-card">
-            <SectionHeader eyebrow="Elencos acessiveis" title="Jogadores dos dois lados" description="Os atletas da partida ficam visiveis sem esconder camadas de contexto." />
-            <div className="mt-6 space-y-4">
-              {matchTeams.map((team) => (
-                <div key={team.id} className="surface-elevated p-5">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="eyebrow">Time</p>
-                      <h3 className="mt-2 text-xl font-semibold text-white">{team.name}</h3>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-[10px] uppercase tracking-[0.2em] text-[--color-text-400]">Forca</p>
-                      <strong className="text-white">{team.total_strength}</strong>
-                    </div>
-                  </div>
-                  <div className="mt-4 grid gap-3">
-                    {team.players.map((player) => (
-                      <div key={player.player_id} className="rounded-[22px] border border-white/8 bg-white/[0.03] px-4 py-3">
-                        <div className="flex items-center justify-between gap-4">
-                          <div>
-                            <p className="font-medium text-white">{player.player_name}</p>
-                            <p className="text-sm text-[--color-text-400]">{player.position ?? "Livre"}{player.is_captain ? " • capitao" : ""}</p>
-                          </div>
-                          <div className="inline-flex items-center gap-2 rounded-full bg-cyan-400/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-100">
-                            <Users className="h-3.5 w-3.5" />
-                            OVR {player.overall}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
+        {/* ═══ RIGHT: Event feed ═══ */}
+        <div className="page-card !p-4">
+          <div className="mb-4 flex items-center justify-between gap-2">
+            <p className="eyebrow">Feed ao vivo</p>
+            <span className="rounded-full border border-white/8 bg-white/[0.04] px-2.5 py-0.5 text-[11px] text-[--color-text-muted]">
+              {state.events.length}
+            </span>
+          </div>
+          <EventFeed
+            events={state.events}
+            editable={!sessionClosed && state.match.match.status !== "FINISHED"}
+            onRevert={handleRevertEvent}
+          />
         </div>
-      </section>
+      </div>
 
       {toast ? <QuickConfirmationToast message={toast} /> : null}
     </div>
