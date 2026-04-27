@@ -2,7 +2,7 @@
 
 import {
   BarChart3, CircleDollarSign, Crown, LayoutDashboard,
-  LogOut, Menu, Radio, Shield, Trophy, Users, Waves, X, Zap,
+  LogOut, Menu, Radio, Shield, Terminal, Trophy, Users, Waves, X, Zap,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -382,6 +382,28 @@ export function AppShell({ children }: AppShellProps) {
                   pathname={pathname}
                   onNavigate={() => setMobileOpen(false)}
                 />
+              )}
+
+              {auth.user?.email === (process.env.NEXT_PUBLIC_ADMIN_EMAIL ?? "mateussilva2791@gmail.com") && (
+                <div className="mt-4">
+                  <div className="gradient-divider mb-3" />
+                  <p className="label-section mb-2">Dev</p>
+                  <Link
+                    href="/dev"
+                    onClick={() => setMobileOpen(false)}
+                    className={`relative flex items-center gap-3 rounded-2xl px-4 py-[10px] text-sm font-medium transition-colors duration-150 ${
+                      pathname === "/dev"
+                        ? "text-[--color-text-primary]"
+                        : "text-[--color-text-secondary] hover:bg-[rgba(154,184,158,0.05)] hover:text-[--color-text-primary]"
+                    }`}
+                  >
+                    <Terminal className={`h-4 w-4 shrink-0 transition-colors duration-150 ${pathname === "/dev" ? "text-[--color-accent-primary]" : "text-[--color-text-muted]"}`} />
+                    <span className="flex-1">Painel Dev</span>
+                    {pathname === "/dev" && (
+                      <span className="h-1.5 w-1.5 rounded-full" style={{ background: "#f0b429", boxShadow: "0 0 6px rgba(240,180,41,0.6)" }} />
+                    )}
+                  </Link>
+                </div>
               )}
             </div>
 
