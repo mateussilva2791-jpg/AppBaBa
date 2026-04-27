@@ -41,7 +41,7 @@ const mobileBottomItems = ["", "session", "match", "ranking", "players"];
 function BrandMark() {
   return (
     <img
-      src="/icon-192.png"
+      src="/icon.svg"
       alt="BabaPro"
       width={40}
       height={40}
