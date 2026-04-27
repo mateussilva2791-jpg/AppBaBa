@@ -153,6 +153,7 @@ export function AppShell({ children }: AppShellProps) {
     return match?.[1] ?? null;
   }, [isCreateLeagueRoute, pathname]);
 
+  const isDevView = pathname === "/dev";
   const isInternalView = pathname.startsWith("/league");
   const { league, loading, error, isEmpty, refetch, auth } = useActiveLeague({
     requestedLeagueSlug,
@@ -188,6 +189,9 @@ export function AppShell({ children }: AppShellProps) {
     clearActiveLeagueId();
     router.push("/login");
   }
+
+  /* ── DEV view (sem header público) ── */
+  if (isDevView) return <>{children}</>;
 
   /* ── PUBLIC view ── */
   if (!isInternalView) {

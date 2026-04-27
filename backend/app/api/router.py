@@ -1,10 +1,11 @@
 from fastapi import APIRouter
 
-from app.api.routes import auth, billing, history, leagues, matches, players, ranking, reports, sessions
+from app.api.routes import auth, billing, dev, history, leagues, matches, players, ranking, reports, sessions
 
 
 api_router = APIRouter()
 api_router.include_router(auth.router)
+api_router.include_router(dev.router)
 api_router.include_router(leagues.router)
 api_router.include_router(players.router)
 api_router.include_router(sessions.router)
