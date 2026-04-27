@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 
 import { EmptyLeagueState } from "@/components/league/empty-league-state";
 import { EventFeed } from "@/components/live/event-feed";
+import { MiniField } from "@/components/live/mini-field";
 import { QuickConfirmationToast } from "@/components/live/quick-confirmation-toast";
 import { apiRequest, WS_BASE_URL } from "@/lib/api";
 import { getToken } from "@/lib/auth";
@@ -85,6 +86,7 @@ export default function MatchLivePage({ params }: { params: Promise<{ slug: stri
   const [activeAction, setActiveAction] = useState<MatchEventType | null>(null);
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
   const [highlightedPlayerId, setHighlightedPlayerId] = useState<string | null>(null);
+  const [playerView, setPlayerView] = useState<"list" | "field">("list");
   const [hasNoLeague, setHasNoLeague] = useState(false);
   const [tickNowMs, setTickNowMs] = useState(Date.now());
 
@@ -241,6 +243,12 @@ export default function MatchLivePage({ params }: { params: Promise<{ slug: stri
   function handlePickPlayer(playerId: string) {
     if (!activeAction || !selectedTeamId) return;
     void submitEvent(activeAction, selectedTeamId, playerId);
+  }
+
+  function handleFieldPickPlayer(playerId: string, teamId: string) {
+    setSelectedTeamId(teamId);
+    if (!activeAction) return;
+    void submitEvent(activeAction, teamId, playerId);
   }
 
   async function handleRevertEvent(event: MatchEventDetail) {
@@ -450,72 +458,104 @@ export default function MatchLivePage({ params }: { params: Promise<{ slug: stri
 
           {/* Team + Player */}
           <div className="page-card !p-4">
-            <p className="eyebrow mb-3">
-              {activeAction ? "Qual time?" : "Times"}
-            </p>
-
-            {/* Team tabs */}
-            <div className="flex gap-2">
-              {matchTeams.map((team) => {
-                const sel = team.id === selectedTeamId;
-                return (
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <p className="eyebrow">{activeAction ? "Qual time e jogador?" : "Times"}</p>
+              {/* View toggle */}
+              <div className="flex rounded-xl border border-white/8 bg-white/[0.03] p-0.5">
+                {(["list", "field"] as const).map((v) => (
                   <button
-                    key={team.id}
+                    key={v}
                     type="button"
-                    onClick={() => setSelectedTeamId(team.id)}
+                    onClick={() => setPlayerView(v)}
                     className={[
-                      "flex-1 rounded-xl border py-2.5 text-sm font-semibold transition-all",
-                      sel
-                        ? "border-[--color-accent-primary]/30 bg-[--color-accent-primary]/10 text-[--color-accent-primary]"
-                        : "border-white/8 bg-white/[0.03] text-[--color-text-secondary] hover:bg-white/[0.06] hover:text-white",
+                      "rounded-[10px] px-3 py-1 text-xs font-semibold transition-all",
+                      playerView === v
+                        ? "bg-white/10 text-white"
+                        : "text-[--color-text-muted] hover:text-white",
                     ].join(" ")}
                   >
-                    {team.name}
+                    {v === "list" ? "Lista" : "Campo"}
                   </button>
-                );
-              })}
+                ))}
+              </div>
             </div>
 
-            {/* Player grid */}
-            {selectedTeam ? (
-              <div className="mt-4">
-                <p className="eyebrow mb-3">
-                  {activeAction ? "Quem foi?" : `Elenco — ${selectedTeam.name}`}
-                </p>
-                {activeAction ? (
-                  <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
-                    {selectedTeam.players.map((player) => (
+            {playerView === "field" ? (
+              <MiniField
+                teams={matchTeams}
+                events={state.events}
+                selectedTeamId={selectedTeamId}
+                activeAction={activeAction}
+                highlightedPlayerId={highlightedPlayerId}
+                disabled={disabled}
+                onSelectPlayer={handleFieldPickPlayer}
+              />
+            ) : (
+              <>
+                {/* Team tabs */}
+                <div className="flex gap-2">
+                  {matchTeams.map((team) => {
+                    const sel = team.id === selectedTeamId;
+                    return (
                       <button
-                        key={player.player_id}
+                        key={team.id}
                         type="button"
-                        onClick={() => handlePickPlayer(player.player_id)}
+                        onClick={() => setSelectedTeamId(team.id)}
                         className={[
-                          "rounded-xl border border-white/8 bg-white/[0.03] px-3 py-2.5 text-left transition-all",
-                          "hover:border-[--color-accent-primary]/30 hover:bg-[--color-accent-primary]/8 hover:text-[--color-accent-primary]",
-                          highlightedPlayerId === player.player_id
-                            ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-300"
-                            : "",
+                          "flex-1 rounded-xl border py-2.5 text-sm font-semibold transition-all",
+                          sel
+                            ? "border-[--color-accent-primary]/30 bg-[--color-accent-primary]/10 text-[--color-accent-primary]"
+                            : "border-white/8 bg-white/[0.03] text-[--color-text-secondary] hover:bg-white/[0.06] hover:text-white",
                         ].join(" ")}
                       >
-                        <span className="block truncate text-sm font-semibold text-white">
-                          {player.player_name}
-                          {player.is_captain ? (
-                            <span className="ml-1 text-[10px] text-[--color-accent-primary]">C</span>
-                          ) : null}
-                        </span>
-                        <span className="text-[10px] text-[--color-text-muted]">
-                          {player.position ?? "Livre"}
-                        </span>
+                        {team.name}
                       </button>
-                    ))}
+                    );
+                  })}
+                </div>
+
+                {/* Player grid */}
+                {selectedTeam ? (
+                  <div className="mt-4">
+                    <p className="eyebrow mb-3">
+                      {activeAction ? "Quem foi?" : `Elenco — ${selectedTeam.name}`}
+                    </p>
+                    {activeAction ? (
+                      <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+                        {selectedTeam.players.map((player) => (
+                          <button
+                            key={player.player_id}
+                            type="button"
+                            onClick={() => handlePickPlayer(player.player_id)}
+                            className={[
+                              "rounded-xl border border-white/8 bg-white/[0.03] px-3 py-2.5 text-left transition-all",
+                              "hover:border-[--color-accent-primary]/30 hover:bg-[--color-accent-primary]/8 hover:text-[--color-accent-primary]",
+                              highlightedPlayerId === player.player_id
+                                ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-300"
+                                : "",
+                            ].join(" ")}
+                          >
+                            <span className="block truncate text-sm font-semibold text-white">
+                              {player.player_name}
+                              {player.is_captain ? (
+                                <span className="ml-1 text-[10px] text-[--color-accent-primary]">C</span>
+                              ) : null}
+                            </span>
+                            <span className="text-[10px] text-[--color-text-muted]">
+                              {player.position ?? "Livre"}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="rounded-xl border border-white/6 bg-white/[0.02] px-4 py-4 text-center text-sm text-[--color-text-muted]">
+                        Selecione um evento para registrar um jogador.
+                      </p>
+                    )}
                   </div>
-                ) : (
-                  <p className="rounded-xl border border-white/6 bg-white/[0.02] px-4 py-4 text-center text-sm text-[--color-text-muted]">
-                    Selecione um evento para registrar um jogador.
-                  </p>
-                )}
-              </div>
-            ) : null}
+                ) : null}
+              </>
+            )}
           </div>
         </div>
 
