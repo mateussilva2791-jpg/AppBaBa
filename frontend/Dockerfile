@@ -12,6 +12,9 @@ ENV NODE_ENV=production
 ARG NEXT_PUBLIC_API_BASE_URL=/api
 ENV NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL}
 
+ARG BACKEND_INTERNAL_URL=http://localhost:8001
+ENV BACKEND_INTERNAL_URL=${BACKEND_INTERNAL_URL}
+
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npm run build
