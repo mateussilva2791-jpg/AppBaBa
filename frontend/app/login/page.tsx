@@ -24,6 +24,7 @@ export default function LoginPage() {
     setLoading(true);
     setError("");
 
+    let navigated = false;
     try {
       const response = await apiRequest<TokenResponse>("/auth/login", {
         method: "POST",
@@ -35,11 +36,14 @@ export default function LoginPage() {
         token: response.access_token,
       });
 
+      navigated = true;
       router.push(leagues.length > 0 ? `/league/${leagues[0].slug}` : "/league/new");
     } catch (submissionError) {
       setError(submissionError instanceof Error ? submissionError.message : "Nao foi possivel entrar.");
     } finally {
-      setLoading(false);
+      // On success keep spinner alive until the page unmounts during navigation.
+      // Only reset loading when an error occurred.
+      if (!navigated) setLoading(false);
     }
   }
 

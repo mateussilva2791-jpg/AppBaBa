@@ -1,11 +1,31 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192">
-  <rect width="192" height="192" fill="#07110f"/>
-  <rect x="16" y="16" width="160" height="160" rx="36" fill="url(#g)"/>
-  <text x="96" y="118" font-family="system-ui,sans-serif" font-size="100" font-weight="800" fill="#07110f" text-anchor="middle">B</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
   <defs>
-    <linearGradient id="g" x1="0" y1="0" x2="192" y2="192" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#38D39F"/>
-      <stop offset="100%" stop-color="#4CC9F0"/>
+    <linearGradient id="bg" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0f1a14"/>
+      <stop offset="100%" stop-color="#162419"/>
     </linearGradient>
+    <linearGradient id="badge" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#f0b429"/>
+      <stop offset="60%" stop-color="#e8a020"/>
+      <stop offset="100%" stop-color="#4ade80"/>
+    </linearGradient>
+    <linearGradient id="shine" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="rgba(255,255,255,0.18)"/>
+      <stop offset="100%" stop-color="rgba(255,255,255,0)"/>
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="12" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
   </defs>
+  <rect width="512" height="512" fill="url(#bg)"/>
+  <rect x="32" y="32" width="448" height="448" rx="108" fill="none" stroke="#f0b429" stroke-width="3" opacity="0.18"/>
+  <rect x="48" y="48" width="416" height="416" rx="96" fill="url(#badge)" filter="url(#glow)"/>
+  <rect x="48" y="48" width="416" height="208" rx="96" fill="url(#shine)" opacity="0.5"/>
+  <rect x="48" y="152" width="416" height="104" fill="url(#shine)" opacity="0.5"/>
+  <circle cx="256" cy="256" r="88" fill="none" stroke="rgba(15,26,20,0.25)" stroke-width="1.5"/>
+  <circle cx="256" cy="256" r="60" fill="none" stroke="rgba(15,26,20,0.18)" stroke-width="1"/>
+  <text x="256" y="340" font-family="system-ui,-apple-system,Arial Black,sans-serif" font-size="240" font-weight="900" fill="#0f1a14" text-anchor="middle" letter-spacing="-8" opacity="0.92">B</text>
+  <rect x="310" y="350" width="118" height="44" rx="22" fill="#0f1a14" opacity="0.85"/>
+  <text x="369" y="379" font-family="system-ui,-apple-system,Arial Black,sans-serif" font-size="26" font-weight="900" fill="#f0b429" text-anchor="middle" letter-spacing="3">PRO</text>
 </svg>

@@ -12,6 +12,7 @@ import { EmptyLeagueState } from "@/components/league/empty-league-state";
 import { LeagueLoadError } from "@/components/league/league-load-error";
 import { LeagueSkeleton } from "@/components/league/league-skeleton";
 import { useActiveLeague } from "@/hooks/useActiveLeague";
+import { invalidateAuthCache } from "@/hooks/useAuth";
 import { clearToken } from "@/lib/auth";
 import { clearActiveLeagueId } from "@/services/leagues/getActiveLeagueForUser";
 
@@ -39,15 +40,14 @@ const mobileBottomItems = ["", "session", "match", "ranking", "players"];
 
 function BrandMark() {
   return (
-    <span
-      className="inline-flex shrink-0 items-center justify-center rounded-[13px] h-10 w-10 text-[15px] font-[family-name:var(--font-manrope)] font-extrabold text-[#0a1210]"
-      style={{
-        background: "linear-gradient(135deg,#4ade80 0%,#f0b429 100%)",
-        boxShadow: "0 0 18px rgba(240,180,41,0.25), 0 2px 8px rgba(0,0,0,0.4)",
-      }}
-    >
-      B
-    </span>
+    <img
+      src="/icon-192.png"
+      alt="BabaPro"
+      width={40}
+      height={40}
+      className="shrink-0 rounded-[13px]"
+      style={{ boxShadow: "0 0 18px rgba(240,180,41,0.25), 0 2px 8px rgba(0,0,0,0.4)" }}
+    />
   );
 }
 
@@ -188,6 +188,7 @@ export function AppShell({ children }: AppShellProps) {
   function handleLogout() {
     clearToken();
     clearActiveLeagueId();
+    invalidateAuthCache();
     router.push("/login");
   }
 
@@ -211,7 +212,7 @@ export function AppShell({ children }: AppShellProps) {
                 <BrandMark />
                 <div>
                   <strong className="font-[family-name:var(--font-manrope)] text-[15px] tracking-[-0.03em] text-[--color-text-primary]">
-                    App do Baba
+                    BabaPro
                   </strong>
                   <p className="text-[10px] text-[--color-text-muted]">Sports SaaS para ligas e rodadas</p>
                 </div>
@@ -334,7 +335,7 @@ export function AppShell({ children }: AppShellProps) {
                 <BrandMark />
                 <div className="min-w-0">
                   <strong className="block font-[family-name:var(--font-manrope)] text-[15px] tracking-[-0.03em] text-[--color-text-primary]">
-                    App do Baba
+                    BabaPro
                   </strong>
                   <p className="text-[10px] text-[--color-text-muted]">League operations</p>
                 </div>
@@ -457,7 +458,7 @@ export function AppShell({ children }: AppShellProps) {
 
                   <div className="hidden items-center gap-2 lg:flex">
                     <span className="text-[10px] uppercase tracking-[0.28em] text-[--color-text-muted]">
-                      {league?.name ?? "App do Baba"}
+                      {league?.name ?? "BabaPro"}
                     </span>
                     <span className="text-[--color-text-muted] opacity-30">/</span>
                     <span className="font-[family-name:var(--font-manrope)] text-[15px] font-semibold tracking-[-0.02em] text-[--color-text-primary]">

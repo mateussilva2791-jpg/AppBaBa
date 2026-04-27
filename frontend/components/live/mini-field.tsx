@@ -2,14 +2,13 @@
 
 import type { LiveTeam, MatchEventDetail, MatchEventType, LiveTeamPlayer } from "@/lib/types";
 
-
-/* ── Stats ───────────────────────────────────────────────── */
+/* ── Stats ──────────────────────────────────────────────────────── */
 type Stats = { goals: number; assists: number; yellowCards: number; redCards: number };
 
 function buildStats(events: MatchEventDetail[]): Map<string, Stats> {
   const z = (): Stats => ({ goals: 0, assists: 0, yellowCards: 0, redCards: 0 });
   const m = new Map<string, Stats>();
-  for (const e of events.filter((ev) => !ev.is_reverted)) {
+  for (const e of events.filter((x) => !x.is_reverted)) {
     if (e.event_type === "GOAL"        && e.player_id) { const s = m.get(e.player_id) ?? z(); s.goals++;       m.set(e.player_id, s); }
     if (e.event_type === "ASSIST"      && e.player_id) { const s = m.get(e.player_id) ?? z(); s.assists++;     m.set(e.player_id, s); }
     if (e.event_type === "YELLOW_CARD" && e.player_id) { const s = m.get(e.player_id) ?? z(); s.yellowCards++; m.set(e.player_id, s); }
@@ -18,115 +17,228 @@ function buildStats(events: MatchEventDetail[]): Map<string, Stats> {
   return m;
 }
 
-/* ── Position grouping ───────────────────────────────────── */
+/* ── Position helpers ───────────────────────────────────────────── */
 type PosGroup = "gk" | "def" | "mid" | "fwd";
 
 function classify(pos: string | null | undefined): PosGroup {
   const p = (pos ?? "").toUpperCase();
-  if (/GOL|GK/.test(p)) return "gk";
+  if (/GOL|GK/.test(p))                     return "gk";
   if (/ZAG|LAT|DEF|LIB|CB|FB|LD|LE/.test(p)) return "def";
-  if (/MEI|VOL|MID|MEC|CM|MC/.test(p)) return "mid";
+  if (/MEI|VOL|MID|MEC|CM|MC/.test(p))      return "mid";
   if (/ATA|ATK|FWD|CA|SS|CF|LW|RW/.test(p)) return "fwd";
   return "mid";
 }
 
-function groupByPos(players: LiveTeamPlayer[]): Record<PosGroup, LiveTeamPlayer[]> {
+function groupByPos(players: LiveTeamPlayer[]) {
   const g: Record<PosGroup, LiveTeamPlayer[]> = { gk: [], def: [], mid: [], fwd: [] };
   for (const p of players) g[classify(p.position)].push(p);
   return g;
 }
 
-// Returns formation rows top→bottom for the given half
-function getRows(players: LiveTeamPlayer[], side: "home" | "away"): LiveTeamPlayer[][] {
+/* ── Compute grid placement ─────────────────────────────────────── */
+// Returns players with their % position on the field (top, left)
+type Placed = { player: LiveTeamPlayer; top: number; left: number; jersey: number; teamId: string };
+
+// Spread N items evenly between leftPad% and rightPad%
+function spreadX(count: number, idx: number, pad = 14): number {
+  if (count === 1) return 50;
+  return pad + (idx / (count - 1)) * (100 - pad * 2);
+}
+
+// Y zones per row count
+//   home side: rows are ordered fwd→gk, fwd is near midline, gk is at bottom
+//   away side: rows are ordered gk→fwd, gk is at top, fwd near midline
+const ZONE_HOME: Record<number, number[]> = {
+  1: [85],
+  2: [58, 86],
+  3: [49, 69, 87],
+  4: [48, 62, 76, 88],
+  5: [46, 58, 68, 78, 88],
+  6: [45, 55, 64, 73, 81, 89],
+};
+const ZONE_AWAY: Record<number, number[]> = {
+  1: [15],
+  2: [14, 42],
+  3: [13, 31, 51],
+  4: [12, 24, 37, 52],
+  5: [11, 22, 33, 42, 54],
+  6: [11, 19, 28, 37, 45, 55],
+};
+
+function computePlacement(players: LiveTeamPlayer[], side: "home" | "away", teamId: string): Placed[] {
+  if (!players.length) return [];
+
   const hasPos = players.some((p) => !!p.position);
+  let rows: LiveTeamPlayer[][];
 
   if (!hasPos) {
-    // No position data: split into 3 roughly equal rows
     const n = players.length;
     const a = Math.ceil(n / 3);
     const b = Math.ceil((n - a) / 2);
-    const rows = [players.slice(0, a), players.slice(a, a + b), players.slice(a + b)];
-    return side === "home" ? rows : [...rows].reverse();
+    rows = [players.slice(0, a), players.slice(a, a + b), players.slice(a + b)].filter((r) => r.length > 0);
+    if (side === "away") rows = [...rows].reverse();
+  } else {
+    const g = groupByPos(players);
+    const order: PosGroup[] = side === "home" ? ["fwd", "mid", "def", "gk"] : ["gk", "def", "mid", "fwd"];
+    rows = order.map((k) => g[k]).filter((r) => r.length > 0);
   }
 
-  const g = groupByPos(players);
-  // home: FWD → MID → DEF → GK  (attack faces up, GK at bottom)
-  // away: GK → DEF → MID → FWD  (attack faces down, GK at top)
-  const order: PosGroup[] = side === "home"
-    ? ["fwd", "mid", "def", "gk"]
-    : ["gk", "def", "mid", "fwd"];
-  return order.map((k) => g[k]).filter((r) => r.length > 0);
+  const nRows = rows.length;
+  const zones = side === "home" ? ZONE_HOME : ZONE_AWAY;
+  const ys: number[] = zones[nRows] ?? rows.map((_, i) =>
+    side === "home" ? 48 + i * 40 / Math.max(nRows - 1, 1) : 12 + i * 42 / Math.max(nRows - 1, 1),
+  );
+
+  const result: Placed[] = [];
+  let jersey = 1;
+  for (let ri = 0; ri < rows.length; ri++) {
+    const y = ys[ri] ?? (side === "home" ? 85 : 15);
+    for (let pi = 0; pi < rows[ri].length; pi++) {
+      result.push({ player: rows[ri][pi], top: y, left: spreadX(rows[ri].length, pi), jersey: jersey++, teamId });
+    }
+  }
+  return result;
 }
 
-function shortName(player: LiveTeamPlayer) {
-  if (player.player_nickname) return player.player_nickname.slice(0, 10);
-  const parts = player.player_name.trim().split(" ");
-  return parts[0].slice(0, 10);
+function nick(p: LiveTeamPlayer): string {
+  if (p.player_nickname) return p.player_nickname.slice(0, 8);
+  return p.player_name.trim().split(" ")[0].slice(0, 8);
 }
 
-function posLabel(pos: string | null | undefined) {
-  return (pos ?? "?").toUpperCase().slice(0, 3);
-}
-
-/* ── Stat badge ──────────────────────────────────────────── */
-function StatBadge({ s }: { s: Stats }) {
-  if (s.redCards)    return <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[8px] font-black text-white ring-1 ring-black/40">✕</span>;
-  if (s.yellowCards) return <span className="absolute -right-0.5 -top-0.5 h-4 w-4 rounded bg-yellow-400 ring-1 ring-black/40" />;
-  if (s.goals)       return <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-white/90 text-[9px] ring-1 ring-black/20">⚽</span>;
-  return null;
-}
-
-/* ── Player dot ──────────────────────────────────────────── */
-function PlayerDot({
-  player,
+/* ── Player pin ─────────────────────────────────────────────────── */
+function Pin({
+  placed,
   side,
   stats,
   clickable,
   highlighted,
   onClick,
 }: {
-  player: LiveTeamPlayer;
+  placed: Placed;
   side: "home" | "away";
   stats: Stats;
   clickable: boolean;
   highlighted: boolean;
   onClick: () => void;
 }) {
-  const base = side === "home"
-    ? "bg-emerald-700 border-emerald-300/80 shadow-[0_2px_8px_rgba(0,0,0,0.4)]"
-    : "bg-sky-700 border-sky-300/80 shadow-[0_2px_8px_rgba(0,0,0,0.4)]";
+  // Visual states
+  const homeBase   = "bg-[#e8b320] border-[#f5c842] text-[#1a1200]";
+  const homeGlow   = "bg-[#ffe066] border-white text-[#1a1200] shadow-[0_0_18px_rgba(240,180,32,0.85)]";
+  const awayBase   = "bg-[#1d6fa8] border-[#3b9dd4] text-white";
+  const awayGlow   = "bg-[#38b2f0] border-white text-white shadow-[0_0_18px_rgba(56,178,240,0.85)]";
 
-  const lit = side === "home"
-    ? "bg-emerald-500 border-white shadow-[0_0_14px_rgba(74,222,128,0.5)]"
-    : "bg-sky-500 border-white shadow-[0_0_14px_rgba(96,165,250,0.5)]";
+  const base      = side === "home" ? homeBase : awayBase;
+  const glowClass = side === "home" ? homeGlow : awayGlow;
+
+  // Stat indicator
+  let badge: React.ReactNode = null;
+  if (stats.redCards)    badge = <span style={{ position:"absolute", top:-5, right:-5, fontSize:9, fontWeight:900, background:"#ef4444", borderRadius:"50%", width:14, height:14, display:"flex", alignItems:"center", justifyContent:"center", color:"#fff", boxShadow:"0 0 0 1.5px rgba(0,0,0,0.4)" }}>✕</span>;
+  else if (stats.yellowCards) badge = <span style={{ position:"absolute", top:-5, right:-5, width:14, height:14, background:"#facc15", borderRadius:3, boxShadow:"0 0 0 1.5px rgba(0,0,0,0.4)" }} />;
+  else if (stats.goals)  badge = <span style={{ position:"absolute", top:-5, right:-5, fontSize:9, background:"rgba(255,255,255,0.95)", borderRadius:"50%", width:14, height:14, display:"flex", alignItems:"center", justifyContent:"center", boxShadow:"0 0 0 1.5px rgba(0,0,0,0.2)" }}>⚽</span>;
 
   return (
-    <div className="flex flex-col items-center gap-1">
+    <div
+      style={{
+        position: "absolute",
+        top: `${placed.top}%`,
+        left: `${placed.left}%`,
+        transform: "translate(-50%, -50%)",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        gap: 2,
+        zIndex: 10,
+      }}
+    >
       <button
         type="button"
         disabled={!clickable}
         onClick={onClick}
-        title={player.player_name}
-        className={[
-          "relative flex h-11 w-11 items-center justify-center rounded-full border-2 text-[11px] font-extrabold text-white transition-all duration-150",
-          highlighted ? lit : base,
-          clickable
-            ? "cursor-pointer hover:scale-[1.12] hover:border-white hover:brightness-125"
-            : "cursor-default opacity-80",
-        ].join(" ")}
+        title={placed.player.player_name}
+        style={{
+          position: "relative",
+          width: 30,
+          height: 30,
+          borderRadius: "50%",
+          border: "2px solid",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: 11,
+          fontWeight: 800,
+          cursor: clickable ? "pointer" : "default",
+          transition: "transform 0.12s, opacity 0.12s",
+          boxShadow: "0 3px 10px rgba(0,0,0,0.55)",
+        }}
+        className={highlighted ? glowClass : base}
+        onMouseEnter={(e) => { if (clickable) (e.currentTarget as HTMLButtonElement).style.transform = "scale(1.18)"; }}
+        onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.transform = "scale(1)"; }}
       >
-        {posLabel(player.position)}
-        <StatBadge s={stats} />
+        {placed.jersey}
+        {badge}
       </button>
-      <span className="max-w-[48px] truncate text-center text-[9px] font-semibold leading-none text-white/65">
-        {shortName(player)}
+      <span
+        style={{
+          fontSize: 7.5,
+          fontWeight: 600,
+          color: "rgba(255,255,255,0.82)",
+          maxWidth: 36,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+          textShadow: "0 1px 4px rgba(0,0,0,1)",
+          lineHeight: 1,
+        }}
+      >
+        {nick(placed.player)}
       </span>
     </div>
   );
 }
 
+/* ── Grass stripe SVG overlay ───────────────────────────────────── */
+function FieldSVG() {
+  return (
+    <svg
+      style={{ position:"absolute", inset:0, width:"100%", height:"100%", pointerEvents:"none" }}
+      viewBox="0 0 100 100"
+      preserveAspectRatio="none"
+    >
+      {/* Alternating stripes */}
+      {[0,1,2,3,4,5,6,7].map((i) => (
+        <rect key={i} x="0" y={i*12.5} width="100" height="12.5"
+          fill={i%2===0 ? "rgba(0,0,0,0.06)" : "rgba(255,255,255,0.022)"} />
+      ))}
+      {/* Outer border */}
+      <rect x="3" y="2" width="94" height="96" rx="0.5" fill="none" stroke="rgba(255,255,255,0.30)" strokeWidth="0.6"/>
+      {/* Halfway */}
+      <line x1="3" y1="50" x2="97" y2="50" stroke="rgba(255,255,255,0.30)" strokeWidth="0.6"/>
+      {/* Centre circle */}
+      <circle cx="50" cy="50" r="11" fill="none" stroke="rgba(255,255,255,0.24)" strokeWidth="0.6"/>
+      <circle cx="50" cy="50" r="1.4" fill="rgba(255,255,255,0.55)"/>
+      {/* HOME penalty area */}
+      <rect x="23" y="79" width="54" height="19" rx="0.3" fill="none" stroke="rgba(255,255,255,0.22)" strokeWidth="0.5"/>
+      <rect x="36" y="91" width="28" height="7" rx="0.3" fill="none" stroke="rgba(255,255,255,0.14)" strokeWidth="0.4"/>
+      <circle cx="50" cy="86" r="0.7" fill="rgba(255,255,255,0.38)"/>
+      <path d="M 36 79 A 10 10 0 0 0 64 79" fill="none" stroke="rgba(255,255,255,0.16)" strokeWidth="0.4"/>
+      {/* AWAY penalty area */}
+      <rect x="23" y="2"  width="54" height="19" rx="0.3" fill="none" stroke="rgba(255,255,255,0.22)" strokeWidth="0.5"/>
+      <rect x="36" y="2"  width="28" height="7"  rx="0.3" fill="none" stroke="rgba(255,255,255,0.14)" strokeWidth="0.4"/>
+      <circle cx="50" cy="14" r="0.7" fill="rgba(255,255,255,0.38)"/>
+      <path d="M 36 21 A 10 10 0 0 1 64 21" fill="none" stroke="rgba(255,255,255,0.16)" strokeWidth="0.4"/>
+      {/* Goals */}
+      <rect x="39" y="97.5" width="22" height="2.5" rx="0.3" fill="rgba(255,255,255,0.07)" stroke="rgba(255,255,255,0.40)" strokeWidth="0.5"/>
+      <rect x="39" y="0"    width="22" height="2.5" rx="0.3" fill="rgba(255,255,255,0.07)" stroke="rgba(255,255,255,0.40)" strokeWidth="0.5"/>
+      {/* Corner arcs */}
+      <path d="M3 5 A3 3 0 0 1 6 2"   fill="none" stroke="rgba(255,255,255,0.18)" strokeWidth="0.45"/>
+      <path d="M94 2 A3 3 0 0 1 97 5" fill="none" stroke="rgba(255,255,255,0.18)" strokeWidth="0.45"/>
+      <path d="M97 95 A3 3 0 0 1 94 98" fill="none" stroke="rgba(255,255,255,0.18)" strokeWidth="0.45"/>
+      <path d="M6 98 A3 3 0 0 1 3 95"  fill="none" stroke="rgba(255,255,255,0.18)" strokeWidth="0.45"/>
+    </svg>
+  );
+}
 
-/* ── Main export ─────────────────────────────────────────── */
+/* ── Main ───────────────────────────────────────────────────────── */
 export function MiniField({
   teams,
   events,
@@ -145,104 +257,99 @@ export function MiniField({
   onSelectPlayer: (playerId: string, teamId: string) => void;
 }) {
   const [homeTeam, awayTeam] = teams;
-  const stats = buildStats(events);
+  const statsMap = buildStats(events);
   const clickable = !disabled && !!activeAction;
 
-  const homeRows = homeTeam ? getRows(homeTeam.players, "home") : [];
-  const awayRows = awayTeam ? getRows(awayTeam.players, "away") : [];
+  const homePlaced = homeTeam ? computePlacement(homeTeam.players, "home", homeTeam.id) : [];
+  const awayPlaced = awayTeam ? computePlacement(awayTeam.players, "away", awayTeam.id) : [];
 
-  // Attach teamId to each player so the generic handler can pass it up
-  function tagTeam(players: LiveTeamPlayer[], teamId: string) {
-    return players.map((p) => Object.assign({}, p, { _teamId: teamId }));
-  }
-
-  function renderRows(rows: LiveTeamPlayer[][], teamId: string, side: "home" | "away") {
-    return rows.map((row, i) => (
-      <div key={i} className="flex justify-center gap-2">
-        {tagTeam(row, teamId).map((p) => (
-          <PlayerDot
-            key={p.player_id}
-            player={p}
-            side={side}
-            stats={stats.get(p.player_id) ?? { goals: 0, assists: 0, yellowCards: 0, redCards: 0 }}
-            clickable={clickable && (selectedTeamId === null || selectedTeamId === teamId)}
-            highlighted={highlightedPlayerId === p.player_id}
-            onClick={() => onSelectPlayer(p.player_id, teamId)}
-          />
-        ))}
-      </div>
-    ));
+  function renderPin(p: Placed, side: "home" | "away") {
+    const canClick = clickable && (selectedTeamId === null || selectedTeamId === p.teamId);
+    return (
+      <Pin
+        key={p.player.player_id}
+        placed={p}
+        side={side}
+        stats={statsMap.get(p.player.player_id) ?? { goals:0, assists:0, yellowCards:0, redCards:0 }}
+        clickable={canClick}
+        highlighted={highlightedPlayerId === p.player.player_id}
+        onClick={() => onSelectPlayer(p.player.player_id, p.teamId)}
+      />
+    );
   }
 
   return (
+    /* Outer wrapper — portrait aspect ratio 3:4 */
     <div
-      className="relative overflow-hidden rounded-2xl border border-white/8"
       style={{
-        background: "linear-gradient(180deg,#1b5e2e 0%,#1e6e34 30%,#1a6630 50%,#1e6e34 70%,#1b5e2e 100%)",
+        position: "relative",
+        width: "100%",
+        paddingBottom: "133.33%", /* 4/3 = portrait */
+        borderRadius: 18,
+        overflow: "hidden",
+        border: "1px solid rgba(255,255,255,0.09)",
+        background: "linear-gradient(180deg,#1a5828 0%,#1d6b32 20%,#1b6430 50%,#1d6b32 80%,#1a5828 100%)",
       }}
     >
-      {/* ─── Field lines (SVG) ─── */}
-      <svg
-        className="pointer-events-none absolute inset-0 h-full w-full"
-        viewBox="0 0 100 100"
-        preserveAspectRatio="none"
-      >
-        {/* Outer border */}
-        <rect x="2" y="1.5" width="96" height="97" rx="1" fill="none" stroke="rgba(255,255,255,0.14)" strokeWidth="0.5" />
-        {/* Halfway line */}
-        <line x1="2" y1="50" x2="98" y2="50" stroke="rgba(255,255,255,0.18)" strokeWidth="0.5" />
-        {/* Center circle */}
-        <circle cx="50" cy="50" r="12" fill="none" stroke="rgba(255,255,255,0.14)" strokeWidth="0.5" />
-        {/* Center spot */}
-        <circle cx="50" cy="50" r="1" fill="rgba(255,255,255,0.25)" />
-        {/* Home penalty area */}
-        <rect x="22" y="78" width="56" height="20" rx="0.5" fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="0.4" />
-        {/* Away penalty area */}
-        <rect x="22" y="2" width="56" height="20" rx="0.5" fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="0.4" />
-        {/* Home goal */}
-        <rect x="37" y="96" width="26" height="3" rx="0.5" fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth="0.5" />
-        {/* Away goal */}
-        <rect x="37" y="1" width="26" height="3" rx="0.5" fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth="0.5" />
-        {/* Alternating grass stripes (subtle) */}
-        {[0,2,4,6,8].map((i) => (
-          <rect key={i} x="0" y={i * 10} width="100" height="10" fill="rgba(0,0,0,0.04)" />
-        ))}
-      </svg>
+      {/* Inner absolutely-fills wrapper so children can use % coords */}
+      <div style={{ position:"absolute", inset:0 }}>
+        <FieldSVG />
 
-      {/* ─── Content ─── */}
-      <div className="relative flex flex-col gap-3 px-4 py-4">
         {/* Away team label */}
         {awayTeam && (
-          <p className="text-center text-[9px] font-bold uppercase tracking-[0.22em] text-sky-200/60">
-            {awayTeam.name}
-          </p>
+          <div style={{ position:"absolute", top:10, left:"50%", transform:"translateX(-50%)", zIndex:20, pointerEvents:"none" }}>
+            <span style={{
+              display:"inline-block",
+              background:"rgba(29,95,160,0.75)",
+              border:"1px solid rgba(59,157,212,0.35)",
+              borderRadius:99,
+              padding:"2px 10px",
+              fontSize:8,
+              fontWeight:700,
+              letterSpacing:"0.18em",
+              textTransform:"uppercase",
+              color:"rgba(178,220,255,0.9)",
+              backdropFilter:"blur(4px)",
+              whiteSpace:"nowrap",
+            }}>
+              {awayTeam.name}
+            </span>
+          </div>
         )}
-
-        {/* Away rows (top half) */}
-        <div className="flex flex-col gap-3">
-          {awayTeam ? renderRows(awayRows, awayTeam.id, "away") : null}
-        </div>
-
-        {/* Midfield divider */}
-        <div className="mx-auto w-8 border-t border-white/20" />
-
-        {/* Home rows (bottom half) */}
-        <div className="flex flex-col gap-3">
-          {homeTeam ? renderRows(homeRows, homeTeam.id, "home") : null}
-        </div>
 
         {/* Home team label */}
         {homeTeam && (
-          <p className="text-center text-[9px] font-bold uppercase tracking-[0.22em] text-emerald-200/60">
-            {homeTeam.name}
-          </p>
+          <div style={{ position:"absolute", bottom:10, left:"50%", transform:"translateX(-50%)", zIndex:20, pointerEvents:"none" }}>
+            <span style={{
+              display:"inline-block",
+              background:"rgba(120,80,0,0.75)",
+              border:"1px solid rgba(240,180,32,0.35)",
+              borderRadius:99,
+              padding:"2px 10px",
+              fontSize:8,
+              fontWeight:700,
+              letterSpacing:"0.18em",
+              textTransform:"uppercase",
+              color:"rgba(255,220,100,0.92)",
+              backdropFilter:"blur(4px)",
+              whiteSpace:"nowrap",
+            }}>
+              {homeTeam.name}
+            </span>
+          </div>
         )}
 
-        {/* No-action hint */}
+        {/* Players */}
+        {awayPlaced.map((p) => renderPin(p, "away"))}
+        {homePlaced.map((p) => renderPin(p, "home"))}
+
+        {/* Hint */}
         {!activeAction && !disabled && (
-          <p className="text-center text-[10px] text-white/25">
-            selecione um evento para registrar no campo
-          </p>
+          <div style={{ position:"absolute", bottom:32, left:0, right:0, display:"flex", justifyContent:"center", zIndex:30, pointerEvents:"none" }}>
+            <span style={{ background:"rgba(0,0,0,0.38)", borderRadius:99, padding:"3px 12px", fontSize:8, color:"rgba(255,255,255,0.28)", backdropFilter:"blur(2px)" }}>
+              selecione um evento para registrar no campo
+            </span>
+          </div>
         )}
       </div>
     </div>

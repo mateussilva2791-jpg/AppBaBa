@@ -25,11 +25,11 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: "App do Baba — Gerencie sua liga de futebol como os profissionais",
+  title: "BabaPro — Gerencie sua liga de futebol como os profissionais",
   description:
     "Sorteio inteligente, live ops em tempo real e ranking automático para babas e ligas amadoras. Grátis para começar, sem cartão de crédito.",
   keywords: [
-    "app baba futebol",
+    "baba pro futebol",
     "gerenciar liga amadora",
     "sorteio times futebol",
     "live ops futebol",
@@ -39,26 +39,31 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "App do Baba",
+    title: "BabaPro",
   },
   icons: {
-    icon: "/icon.svg",
-    apple: "/icon.svg",
+    icon: [
+      { url: "/icon-48.png",  sizes: "48x48",   type: "image/png" },
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
+      { url: "/icon.svg",     type: "image/svg+xml" },
+    ],
+    apple: [
+      { url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
+    ],
   },
   openGraph: {
-    title: "App do Baba — Gerencie sua liga como os profissionais",
+    title: "BabaPro — Gerencie sua liga como os profissionais",
     description:
       "Sorteio inteligente, live ops em tempo real e ranking automático para babas e ligas amadoras.",
-    url: "https://baba-frontend.onrender.com",
-    siteName: "App do Baba",
+    url: "https://frontend-steel-five-56.vercel.app",
+    siteName: "BabaPro",
     type: "website",
-    images: [{ url: "https://baba-frontend.onrender.com/og-image.png", width: 1200, height: 630 }],
   },
   twitter: {
     card: "summary_large_image",
-    title: "App do Baba",
+    title: "BabaPro",
     description: "Gerencie sua liga de futebol como os profissionais.",
-    images: ["https://baba-frontend.onrender.com/og-image.png"],
   },
 };
 

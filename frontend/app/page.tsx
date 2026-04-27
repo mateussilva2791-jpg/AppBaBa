@@ -515,13 +515,13 @@ export default function HomePage() {
           <div className="space-y-3">
             <div className="flex items-center gap-3">
               <span
-                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[11px] font-[family-name:var(--font-manrope)] text-[14px] font-extrabold text-[#0a1210]"
-                style={{ background: "linear-gradient(135deg,#4ade80,#f0b429)" }}
+                className="inline-flex h-9 w-9 shrink-0 rounded-[11px] overflow-hidden"
+                style={{ boxShadow: "0 0 12px rgba(240,180,41,0.2)" }}
               >
-                B
+                <img src="/icon-192.png" alt="BabaPro" width={36} height={36} className="w-full h-full object-cover" />
               </span>
               <strong className="font-[family-name:var(--font-manrope)] text-[15px] tracking-[-0.03em] text-white">
-                App do Baba
+                BabaPro
               </strong>
             </div>
             <p className="max-w-[220px] text-xs leading-5 text-[--color-text-muted]">
@@ -549,7 +549,7 @@ export default function HomePage() {
         </div>
 
         <div className="mt-10 flex flex-col items-center justify-between gap-3 border-t border-white/6 pt-6 sm:flex-row">
-          <p className="text-xs text-[--color-text-muted]">© 2025 App do Baba. Todos os direitos reservados.</p>
+          <p className="text-xs text-[--color-text-muted]">© 2025 BabaPro. Todos os direitos reservados.</p>
           <div className="flex gap-4 text-xs text-[--color-text-muted]">
             <Link href="/terms" className="hover:text-white transition-colors">Termos de Uso</Link>
             <Link href="/privacy" className="hover:text-white transition-colors">Privacidade</Link>
