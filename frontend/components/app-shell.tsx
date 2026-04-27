@@ -46,7 +46,10 @@ function BrandMark() {
       width={40}
       height={40}
       className="shrink-0 rounded-[13px]"
-      style={{ boxShadow: "0 0 18px rgba(240,180,41,0.25), 0 2px 8px rgba(0,0,0,0.4)" }}
+      style={{
+        outline: "1.5px solid rgba(232,179,32,0.45)",
+        boxShadow: "0 0 18px rgba(240,180,41,0.35), 0 2px 8px rgba(0,0,0,0.5)",
+      }}
     />
   );
 }
@@ -334,10 +337,10 @@ export function AppShell({ children }: AppShellProps) {
               >
                 <BrandMark />
                 <div className="min-w-0">
-                  <strong className="block font-[family-name:var(--font-manrope)] text-[15px] tracking-[-0.03em] text-[--color-text-primary]">
+                  <strong className="block whitespace-nowrap font-[family-name:var(--font-manrope)] text-[15px] tracking-[-0.03em] text-[--color-text-primary]">
                     BabaPro
                   </strong>
-                  <p className="text-[10px] text-[--color-text-muted]">League operations</p>
+                  <p className="whitespace-nowrap text-[10px] text-[--color-text-muted]">League operations</p>
                 </div>
               </Link>
 
