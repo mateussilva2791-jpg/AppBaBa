@@ -105,10 +105,7 @@ def healthcheck():
             }
         },
     }
-    return JSONResponse(
-        status_code=status.HTTP_200_OK if database_ok else status.HTTP_503_SERVICE_UNAVAILABLE,
-        content=payload,
-    )
+    return JSONResponse(status_code=status.HTTP_200_OK, content=payload)
 
 
 @app.get("/health/live")
