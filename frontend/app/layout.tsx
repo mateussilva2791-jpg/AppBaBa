@@ -25,8 +25,16 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: "App do Baba",
-  description: "Plataforma esportiva SaaS para ligas de baba, ranking e operacao ao vivo.",
+  title: "App do Baba — Gerencie sua liga de futebol como os profissionais",
+  description:
+    "Sorteio inteligente, live ops em tempo real e ranking automático para babas e ligas amadoras. Grátis para começar, sem cartão de crédito.",
+  keywords: [
+    "app baba futebol",
+    "gerenciar liga amadora",
+    "sorteio times futebol",
+    "live ops futebol",
+    "ranking liga amadora",
+  ],
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
@@ -36,6 +44,21 @@ export const metadata: Metadata = {
   icons: {
     icon: "/icon.svg",
     apple: "/icon.svg",
+  },
+  openGraph: {
+    title: "App do Baba — Gerencie sua liga como os profissionais",
+    description:
+      "Sorteio inteligente, live ops em tempo real e ranking automático para babas e ligas amadoras.",
+    url: "https://baba-frontend.onrender.com",
+    siteName: "App do Baba",
+    type: "website",
+    images: [{ url: "https://baba-frontend.onrender.com/og-image.png", width: 1200, height: 630 }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "App do Baba",
+    description: "Gerencie sua liga de futebol como os profissionais.",
+    images: ["https://baba-frontend.onrender.com/og-image.png"],
   },
 };
 

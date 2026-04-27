@@ -18,7 +18,8 @@ import { clearActiveLeagueId } from "@/services/leagues/getActiveLeagueForUser";
 type AppShellProps = { children: ReactNode };
 
 const publicLinks = [
-  { href: "/", label: "Produto" },
+  { href: "/#recursos", label: "Recursos" },
+  { href: "/#precos", label: "Preços" },
   { href: "/register", label: "Criar conta" },
   { href: "/login", label: "Entrar" },
 ];
