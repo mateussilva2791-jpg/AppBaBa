@@ -38,26 +38,26 @@ function groupByPos(players: LiveTeamPlayer[]) {
 /* ── Grid placement ───────────────────────────────────────────────── */
 type Placed = { player: LiveTeamPlayer; top: number; left: number; jersey: number; teamId: string };
 
-function spreadX(count: number, idx: number, pad = 16): number {
+function spreadX(count: number, idx: number, pad = 20): number {
   if (count === 1) return 50;
   return pad + (idx / (count - 1)) * (100 - pad * 2);
 }
 
 const ZONE_HOME: Record<number, number[]> = {
-  1: [84],
-  2: [60, 84],
-  3: [50, 68, 84],
-  4: [49, 62, 74, 85],
-  5: [47, 58, 68, 77, 86],
-  6: [46, 55, 64, 72, 80, 87],
+  1: [83],
+  2: [62, 83],
+  3: [52, 69, 83],
+  4: [50, 63, 74, 84],
+  5: [48, 59, 69, 78, 85],
+  6: [47, 56, 65, 73, 81, 87],
 };
 const ZONE_AWAY: Record<number, number[]> = {
-  1: [16],
-  2: [16, 40],
-  3: [16, 32, 50],
-  4: [15, 26, 38, 51],
-  5: [14, 23, 32, 42, 53],
-  6: [13, 20, 28, 36, 44, 54],
+  1: [17],
+  2: [17, 38],
+  3: [17, 31, 48],
+  4: [16, 27, 38, 50],
+  5: [15, 24, 33, 42, 52],
+  6: [14, 21, 29, 37, 46, 55],
 };
 
 function computePlacement(players: LiveTeamPlayer[], side: "home" | "away", teamId: string): Placed[] {
@@ -81,13 +81,13 @@ function computePlacement(players: LiveTeamPlayer[], side: "home" | "away", team
   const nRows = rows.length;
   const zones = side === "home" ? ZONE_HOME : ZONE_AWAY;
   const ys: number[] = zones[nRows] ?? rows.map((_, i) =>
-    side === "home" ? 48 + i * 40 / Math.max(nRows - 1, 1) : 12 + i * 42 / Math.max(nRows - 1, 1),
+    side === "home" ? 50 + i * 38 / Math.max(nRows - 1, 1) : 14 + i * 40 / Math.max(nRows - 1, 1),
   );
 
   const result: Placed[] = [];
   let jersey = 1;
   for (let ri = 0; ri < rows.length; ri++) {
-    const y = ys[ri] ?? (side === "home" ? 84 : 16);
+    const y = ys[ri] ?? (side === "home" ? 83 : 17);
     for (let pi = 0; pi < rows[ri].length; pi++) {
       result.push({ player: rows[ri][pi], top: y, left: spreadX(rows[ri].length, pi), jersey: jersey++, teamId });
     }
@@ -96,12 +96,12 @@ function computePlacement(players: LiveTeamPlayer[], side: "home" | "away", team
 }
 
 function nick(p: LiveTeamPlayer): string {
-  if (p.player_nickname) return p.player_nickname.slice(0, 9);
+  if (p.player_nickname) return p.player_nickname.slice(0, 8);
   const parts = p.player_name.trim().split(" ");
-  return (parts[0] ?? "").slice(0, 9);
+  return (parts[0] ?? "").slice(0, 8);
 }
 
-/* ── Player Pin ───────────────────────────────────────────────────── */
+/* ── Cartoon Player Pin ───────────────────────────────────────────── */
 function Pin({
   placed, side, stats, clickable, highlighted, onClick,
 }: {
@@ -114,52 +114,56 @@ function Pin({
 }) {
   const expelled = stats.redCards > 0 || stats.yellowCards >= 2;
 
-  // Colors
-  const homeBg   = highlighted ? "linear-gradient(145deg,#ffe566,#f0b429)" : "linear-gradient(145deg,#f5c842,#d49a18)";
-  const awayBg   = highlighted ? "linear-gradient(145deg,#5bc8f5,#2d8ed4)" : "linear-gradient(145deg,#3b9dd4,#1d6fa8)";
-  const expelBg  = "linear-gradient(145deg,#ef4444,#b91c1c)";
+  const homeColor   = "#F5C518";
+  const homeDark    = "#8B6800";
+  const homeText    = "#1a1000";
+  const awayColor   = "#38BFFA";
+  const awayDark    = "#0A4F7A";
+  const awayText    = "#fff";
+  const expelColor  = "#F23636";
+  const expelDark   = "#7A0A0A";
 
-  const bg       = expelled ? expelBg : side === "home" ? homeBg : awayBg;
-  const glow     = highlighted
-    ? side === "home"
-      ? "0 0 0 2.5px #fff, 0 0 16px rgba(240,180,32,0.9), 0 4px 12px rgba(0,0,0,0.6)"
-      : "0 0 0 2.5px #fff, 0 0 16px rgba(56,178,240,0.9), 0 4px 12px rgba(0,0,0,0.6)"
-    : "0 2px 8px rgba(0,0,0,0.55), 0 0 0 1.5px rgba(255,255,255,0.18)";
+  const pinColor  = expelled ? expelColor  : side === "home" ? homeColor  : awayColor;
+  const pinDark   = expelled ? expelDark   : side === "home" ? homeDark   : awayDark;
+  const textColor = expelled ? "#fff"      : side === "home" ? homeText   : awayText;
 
   // Badge top-right
   let badge: React.ReactNode = null;
   if (expelled) {
     badge = (
       <span style={{
-        position: "absolute", top: -4, right: -4,
-        width: 13, height: 13, borderRadius: "50%",
-        background: "#fff", border: "1.5px solid #b91c1c",
+        position: "absolute", top: -5, right: -5,
+        width: 15, height: 15, borderRadius: "50%",
+        background: "#fff", border: `2px solid ${expelDark}`,
         display: "flex", alignItems: "center", justifyContent: "center",
-        fontSize: 8, fontWeight: 900, color: "#b91c1c", lineHeight: 1,
-        boxShadow: "0 1px 4px rgba(0,0,0,0.5)",
+        fontSize: 9, fontWeight: 900, color: expelDark, lineHeight: 1,
       }}>✕</span>
     );
   } else if (stats.yellowCards === 1) {
     badge = (
       <span style={{
-        position: "absolute", top: -4, right: -4,
-        width: 10, height: 13, borderRadius: 2,
-        background: "#facc15",
-        boxShadow: "0 1px 4px rgba(0,0,0,0.5), 0 0 0 1.5px rgba(0,0,0,0.25)",
+        position: "absolute", top: -5, right: -4,
+        width: 9, height: 13, borderRadius: 2,
+        background: "#FACC15",
+        border: "2px solid #78350f",
       }} />
     );
   } else if (stats.goals > 0) {
     badge = (
       <span style={{
-        position: "absolute", top: -5, right: -5,
-        width: 14, height: 14, borderRadius: "50%",
-        background: "rgba(255,255,255,0.96)",
+        position: "absolute", top: -6, right: -6,
+        width: 16, height: 16, borderRadius: "50%",
+        background: "#fff",
         display: "flex", alignItems: "center", justifyContent: "center",
-        fontSize: 8,
-        boxShadow: "0 1px 4px rgba(0,0,0,0.4), 0 0 0 1.5px rgba(0,0,0,0.1)",
+        fontSize: 9,
+        border: "2px solid rgba(0,0,0,0.15)",
       }}>⚽</span>
     );
   }
+
+  const glowShadow = highlighted
+    ? `3px 3px 0 ${pinDark}, 0 0 18px ${pinColor}cc`
+    : `3px 3px 0 ${pinDark}`;
 
   return (
     <div style={{
@@ -180,44 +184,50 @@ function Pin({
         title={placed.player.player_name}
         style={{
           position: "relative",
-          width: 34,
-          height: 34,
+          width: 40,
+          height: 40,
           borderRadius: "50%",
-          background: bg,
-          border: "none",
+          background: highlighted
+            ? `radial-gradient(circle at 38% 32%, ${pinColor}ff, ${pinColor}bb)`
+            : `radial-gradient(circle at 38% 32%, ${pinColor}ee, ${pinColor}99)`,
+          border: `3px solid ${pinDark}`,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          fontSize: 12,
+          fontSize: 14,
           fontWeight: 900,
-          color: expelled ? "#fff" : side === "home" ? "#1a1000" : "#fff",
+          color: textColor,
           cursor: clickable ? "pointer" : "default",
-          transition: "transform 0.13s ease, box-shadow 0.13s ease",
-          boxShadow: glow,
+          transition: "transform 0.12s ease",
+          boxShadow: glowShadow,
           letterSpacing: "-0.5px",
+          // inner highlight
+          outline: `1.5px solid rgba(255,255,255,${highlighted ? 0.55 : 0.25})`,
+          outlineOffset: "-4px",
         }}
-        onMouseEnter={(e) => { if (clickable) (e.currentTarget as HTMLButtonElement).style.transform = "scale(1.2)"; }}
+        onMouseEnter={(e) => { if (clickable) (e.currentTarget as HTMLButtonElement).style.transform = "scale(1.18) translateY(-2px)"; }}
         onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.transform = "scale(1)"; }}
       >
         {expelled ? "✕" : placed.jersey}
         {badge}
       </button>
 
-      {/* Name pill */}
+      {/* Cartoon name chip */}
       <span style={{
-        background: "rgba(0,0,0,0.62)",
-        backdropFilter: "blur(4px)",
+        background: `${pinDark}ee`,
         borderRadius: 99,
-        padding: "1px 5px",
-        fontSize: 7,
-        fontWeight: 700,
-        color: expelled ? "#fca5a5" : side === "home" ? "#fde68a" : "#bae6fd",
-        maxWidth: 44,
+        padding: "1.5px 6px",
+        fontSize: 7.5,
+        fontWeight: 800,
+        color: expelled ? "#fca5a5" : side === "home" ? "#fff7cc" : "#e0f4ff",
+        maxWidth: 52,
         overflow: "hidden",
         textOverflow: "ellipsis",
         whiteSpace: "nowrap",
-        lineHeight: 1.5,
-        border: `1px solid ${expelled ? "rgba(239,68,68,0.3)" : side === "home" ? "rgba(240,180,32,0.25)" : "rgba(56,178,240,0.25)"}`,
+        lineHeight: 1.6,
+        border: `1.5px solid ${pinColor}88`,
+        letterSpacing: "0.02em",
+        boxShadow: `1px 1px 0 ${pinDark}`,
       }}>
         {nick(placed.player)}
       </span>
@@ -225,7 +235,7 @@ function Pin({
   );
 }
 
-/* ── Field SVG ────────────────────────────────────────────────────── */
+/* ── Cartoon Field SVG ────────────────────────────────────────────── */
 function FieldSVG() {
   return (
     <svg
@@ -233,76 +243,78 @@ function FieldSVG() {
       viewBox="0 0 100 100"
       preserveAspectRatio="none"
     >
-      {/* Grass stripes */}
+      {/* Alternating grass stripes */}
       {[0,1,2,3,4,5,6,7].map((i) => (
         <rect key={i} x="0" y={i * 12.5} width="100" height="12.5"
-          fill={i % 2 === 0 ? "rgba(0,0,0,0.055)" : "rgba(255,255,255,0.018)"} />
+          fill={i % 2 === 0 ? "rgba(0,0,0,0.07)" : "rgba(255,255,255,0.03)"} />
       ))}
       {/* Outer border */}
-      <rect x="3" y="2" width="94" height="96" rx="0.5" fill="none" stroke="rgba(255,255,255,0.32)" strokeWidth="0.55"/>
+      <rect x="3.5" y="2.5" width="93" height="95" rx="1" fill="none" stroke="rgba(255,255,255,0.65)" strokeWidth="1"/>
       {/* Halfway line */}
-      <line x1="3" y1="50" x2="97" y2="50" stroke="rgba(255,255,255,0.28)" strokeWidth="0.55"/>
+      <line x1="3.5" y1="50" x2="96.5" y2="50" stroke="rgba(255,255,255,0.60)" strokeWidth="0.9"/>
       {/* Centre circle */}
-      <circle cx="50" cy="50" r="11" fill="none" stroke="rgba(255,255,255,0.22)" strokeWidth="0.55"/>
-      <circle cx="50" cy="50" r="1.3" fill="rgba(255,255,255,0.6)"/>
+      <circle cx="50" cy="50" r="12" fill="none" stroke="rgba(255,255,255,0.55)" strokeWidth="0.9"/>
+      <circle cx="50" cy="50" r="1.6" fill="rgba(255,255,255,0.80)"/>
       {/* HOME penalty area */}
-      <rect x="22" y="78" width="56" height="20" rx="0.3" fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth="0.5"/>
-      <rect x="35" y="90" width="30" height="8" rx="0.3" fill="none" stroke="rgba(255,255,255,0.13)" strokeWidth="0.4"/>
-      <circle cx="50" cy="85" r="0.7" fill="rgba(255,255,255,0.4)"/>
-      <path d="M35 78 A10 10 0 0 0 65 78" fill="none" stroke="rgba(255,255,255,0.14)" strokeWidth="0.4"/>
+      <rect x="22" y="77" width="56" height="21" rx="0.5" fill="none" stroke="rgba(255,255,255,0.50)" strokeWidth="0.8"/>
+      <rect x="35" y="89" width="30" height="9"  rx="0.5" fill="none" stroke="rgba(255,255,255,0.35)" strokeWidth="0.7"/>
+      <circle cx="50" cy="84" r="0.9" fill="rgba(255,255,255,0.60)"/>
+      <path d="M35 77 A11 11 0 0 0 65 77" fill="none" stroke="rgba(255,255,255,0.28)" strokeWidth="0.7"/>
       {/* AWAY penalty area */}
-      <rect x="22" y="2"  width="56" height="20" rx="0.3" fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth="0.5"/>
-      <rect x="35" y="2"  width="30" height="8"  rx="0.3" fill="none" stroke="rgba(255,255,255,0.13)" strokeWidth="0.4"/>
-      <circle cx="50" cy="15" r="0.7" fill="rgba(255,255,255,0.4)"/>
-      <path d="M35 22 A10 10 0 0 1 65 22" fill="none" stroke="rgba(255,255,255,0.14)" strokeWidth="0.4"/>
+      <rect x="22" y="2.5"  width="56" height="21" rx="0.5" fill="none" stroke="rgba(255,255,255,0.50)" strokeWidth="0.8"/>
+      <rect x="35" y="2.5"  width="30" height="9"  rx="0.5" fill="none" stroke="rgba(255,255,255,0.35)" strokeWidth="0.7"/>
+      <circle cx="50" cy="16" r="0.9" fill="rgba(255,255,255,0.60)"/>
+      <path d="M35 23.5 A11 11 0 0 1 65 23.5" fill="none" stroke="rgba(255,255,255,0.28)" strokeWidth="0.7"/>
       {/* Goals */}
-      <rect x="40" y="97.5" width="20" height="2.5" rx="0.3" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.38)" strokeWidth="0.5"/>
-      <rect x="40" y="0"    width="20" height="2.5" rx="0.3" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.38)" strokeWidth="0.5"/>
-      {/* Corner arcs */}
-      <path d="M3 5 A3 3 0 0 1 6 2"    fill="none" stroke="rgba(255,255,255,0.17)" strokeWidth="0.4"/>
-      <path d="M94 2 A3 3 0 0 1 97 5"  fill="none" stroke="rgba(255,255,255,0.17)" strokeWidth="0.4"/>
-      <path d="M97 95 A3 3 0 0 1 94 98" fill="none" stroke="rgba(255,255,255,0.17)" strokeWidth="0.4"/>
-      <path d="M6 98 A3 3 0 0 1 3 95"  fill="none" stroke="rgba(255,255,255,0.17)" strokeWidth="0.4"/>
+      <rect x="40" y="97.5" width="20" height="2.5" rx="0.5" fill="rgba(255,255,255,0.12)" stroke="rgba(255,255,255,0.55)" strokeWidth="0.7"/>
+      <rect x="40" y="0"    width="20" height="2.5" rx="0.5" fill="rgba(255,255,255,0.12)" stroke="rgba(255,255,255,0.55)" strokeWidth="0.7"/>
+      {/* Corner flags */}
+      <circle cx="3.5"  cy="2.5"  r="1.2" fill="none" stroke="rgba(255,255,255,0.45)" strokeWidth="0.6"/>
+      <circle cx="96.5" cy="2.5"  r="1.2" fill="none" stroke="rgba(255,255,255,0.45)" strokeWidth="0.6"/>
+      <circle cx="3.5"  cy="97.5" r="1.2" fill="none" stroke="rgba(255,255,255,0.45)" strokeWidth="0.6"/>
+      <circle cx="96.5" cy="97.5" r="1.2" fill="none" stroke="rgba(255,255,255,0.45)" strokeWidth="0.6"/>
     </svg>
   );
 }
 
-/* ── Team label ───────────────────────────────────────────────────── */
+/* ── Cartoon Team Label ───────────────────────────────────────────── */
 function TeamLabel({ name, side }: { name: string; side: "home" | "away" }) {
   const isHome = side === "home";
+  const color  = isHome ? "#F5C518" : "#38BFFA";
+  const dark   = isHome ? "#8B6800" : "#0A4F7A";
+  const textC  = isHome ? "#fff8e1" : "#e0f6ff";
+
   return (
     <div style={{
       position: "absolute",
-      [isHome ? "bottom" : "top"]: 0,
+      [isHome ? "bottom" : "top"]: 6,
       left: 0, right: 0,
       display: "flex",
       justifyContent: "center",
-      paddingBottom: isHome ? 5 : 0,
-      paddingTop: isHome ? 0 : 5,
       zIndex: 20,
       pointerEvents: "none",
     }}>
       <span style={{
         display: "inline-flex",
         alignItems: "center",
-        gap: 4,
-        background: isHome ? "rgba(100,60,0,0.82)" : "rgba(10,45,90,0.82)",
-        border: `1px solid ${isHome ? "rgba(240,180,32,0.4)" : "rgba(59,157,212,0.4)"}`,
+        gap: 5,
+        background: `${dark}f0`,
+        border: `2px solid ${color}`,
         borderRadius: 99,
-        padding: "2px 9px",
-        fontSize: 8,
-        fontWeight: 800,
+        padding: "3px 10px",
+        fontSize: 8.5,
+        fontWeight: 900,
         letterSpacing: "0.16em",
         textTransform: "uppercase",
-        color: isHome ? "rgba(255,220,100,0.95)" : "rgba(160,215,255,0.95)",
-        backdropFilter: "blur(6px)",
-        boxShadow: `0 2px 8px rgba(0,0,0,0.4)`,
+        color: textC,
+        boxShadow: `2px 2px 0 rgba(0,0,0,0.4)`,
         whiteSpace: "nowrap",
       }}>
         <span style={{
-          width: 6, height: 6, borderRadius: "50%",
-          background: isHome ? "#f0b429" : "#38b2f0",
+          width: 7, height: 7, borderRadius: "50%",
+          background: color,
           display: "inline-block", flexShrink: 0,
+          boxShadow: `0 0 6px ${color}`,
         }} />
         {name}
       </span>
@@ -354,30 +366,28 @@ export function MiniField({
     <div style={{
       position: "relative",
       width: "100%",
-      height: 360,
-      borderRadius: 16,
+      height: 380,
+      borderRadius: 18,
       overflow: "hidden",
-      border: "1px solid rgba(255,255,255,0.1)",
-      boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
-      background: "linear-gradient(180deg,#185224 0%,#1c6230 18%,#1b6030 50%,#1c6230 82%,#185224 100%)",
+      border: "3px solid rgba(0,0,0,0.35)",
+      boxShadow: "4px 4px 0 rgba(0,0,0,0.35), 0 8px 32px rgba(0,0,0,0.45)",
+      background: "linear-gradient(180deg,#1a7a32 0%,#1f9040 18%,#1d8a3c 50%,#1f9040 82%,#1a7a32 100%)",
     }}>
       <div style={{ position: "absolute", inset: 0 }}>
         <FieldSVG />
-
         {awayTeam && <TeamLabel name={awayTeam.name} side="away" />}
         {homeTeam && <TeamLabel name={homeTeam.name} side="home" />}
-
         {awayPlaced.map((p) => renderPin(p, "away"))}
         {homePlaced.map((p) => renderPin(p, "home"))}
 
-        {/* Overlay de ação ativa */}
+        {/* Borda de acao ativa */}
         {activeAction && !disabled && (
           <div style={{
             position: "absolute", inset: 0,
-            border: "2px solid rgba(240,180,32,0.25)",
-            borderRadius: 14,
+            border: "3px solid rgba(245,197,24,0.5)",
+            borderRadius: 15,
             pointerEvents: "none",
-            boxShadow: "inset 0 0 40px rgba(240,180,32,0.06)",
+            boxShadow: "inset 0 0 30px rgba(245,197,24,0.08)",
           }} />
         )}
       </div>
