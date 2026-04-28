@@ -481,15 +481,17 @@ export default function MatchLivePage({ params }: { params: Promise<{ slug: stri
             </div>
 
             {playerView === "field" ? (
-              <MiniField
-                teams={matchTeams}
-                events={state.events}
-                selectedTeamId={selectedTeamId}
-                activeAction={activeAction}
-                highlightedPlayerId={highlightedPlayerId}
-                disabled={disabled}
-                onSelectPlayer={handleFieldPickPlayer}
-              />
+              <div className="mx-auto w-full max-w-[260px]">
+                <MiniField
+                  teams={matchTeams}
+                  events={state.events}
+                  selectedTeamId={selectedTeamId}
+                  activeAction={activeAction}
+                  highlightedPlayerId={highlightedPlayerId}
+                  disabled={disabled}
+                  onSelectPlayer={handleFieldPickPlayer}
+                />
+              </div>
             ) : (
               <>
                 {/* Team tabs */}
