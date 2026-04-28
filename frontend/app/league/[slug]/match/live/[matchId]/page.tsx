@@ -545,7 +545,7 @@ export default function MatchLivePage({ params }: { params: Promise<{ slug: stri
             </div>
 
             {playerView === "field" ? (
-              <div className="mx-auto w-full max-w-[260px]">
+              <div className="mx-auto w-full max-w-[300px]">
                 <MiniField
                   teams={matchTeams}
                   events={state.events}
