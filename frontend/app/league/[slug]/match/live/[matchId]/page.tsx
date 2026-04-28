@@ -634,18 +634,20 @@ export default function MatchLivePage({ params }: { params: Promise<{ slug: stri
         </div>
 
         {/* ═══ RIGHT: Event feed ═══ */}
-        <div className="page-card !p-4">
-          <div className="mb-4 flex items-center justify-between gap-2">
+        <div className="page-card !p-4 xl:sticky xl:top-4 xl:self-start flex flex-col" style={{ maxHeight: "calc(100vh - 6rem)" }}>
+          <div className="mb-4 flex shrink-0 items-center justify-between gap-2">
             <p className="eyebrow">Feed ao vivo</p>
             <span className="rounded-full border border-white/8 bg-white/[0.04] px-2.5 py-0.5 text-[11px] text-[--color-text-muted]">
               {state.events.length}
             </span>
           </div>
-          <EventFeed
-            events={state.events}
-            editable={!sessionClosed && state.match.match.status !== "FINISHED"}
-            onRevert={handleRevertEvent}
-          />
+          <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-white/10">
+            <EventFeed
+              events={[...state.events].reverse()}
+              editable={!sessionClosed && state.match.match.status !== "FINISHED"}
+              onRevert={handleRevertEvent}
+            />
+          </div>
         </div>
       </div>
 
