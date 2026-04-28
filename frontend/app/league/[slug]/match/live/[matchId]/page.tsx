@@ -88,6 +88,7 @@ export default function MatchLivePage({ params }: { params: Promise<{ slug: stri
   const [highlightedPlayerId, setHighlightedPlayerId] = useState<string | null>(null);
   const [playerView, setPlayerView] = useState<"list" | "field">("list");
   const [hasNoLeague, setHasNoLeague] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [tickNowMs, setTickNowMs] = useState(Date.now());
 
   const token = getToken();
@@ -180,29 +181,89 @@ export default function MatchLivePage({ params }: { params: Promise<{ slug: stri
 
   function resetFlow() { setActiveAction(null); }
 
+  // Cartões ativos por jogador (não revertidos)
+  const playerCards = useMemo(() => {
+    const map = new Map<string, { yellow: number; red: number }>();
+    if (!state) return map;
+    for (const ev of state.events) {
+      if (ev.is_reverted || !ev.player_id) continue;
+      const entry = map.get(ev.player_id) ?? { yellow: 0, red: 0 };
+      if (ev.event_type === "YELLOW_CARD") entry.yellow += 1;
+      if (ev.event_type === "RED_CARD") entry.red += 1;
+      map.set(ev.player_id, entry);
+    }
+    return map;
+  }, [state]);
+
+  function isExpelled(playerId: string): boolean {
+    const cards = playerCards.get(playerId);
+    if (!cards) return false;
+    return cards.red >= 1 || cards.yellow >= 2;
+  }
+
+  async function postEvent(
+    eventType: MatchEventType,
+    teamId: string | null,
+    playerId: string | null,
+  ) {
+    await apiRequest(`/leagues/${league!.id}/matches/${state!.match.match.id}/events`, {
+      method: "POST", token: token!,
+      body: {
+        event_type: eventType, team_id: teamId, player_id: playerId,
+        related_player_id: null,
+        minute: Math.floor(clockSeconds / 60), second: clockSeconds % 60, notes: null,
+      },
+    });
+  }
+
   async function submitEvent(
     eventType: MatchEventType,
     teamId: string | null = null,
     playerId: string | null = null,
   ) {
-    if (!league || !state || !token) return;
+    if (!league || !state || !token || submitting) return;
+    setError("");
+    if (sessionClosed) { setError("Sessao encerrada."); return; }
+
+    // Bloqueia ações em jogadores expulsos (exceto eventos de status)
+    if (playerId && FLOW_EVENTS.has(eventType)) {
+      if (isExpelled(playerId) && eventType !== "YELLOW_CARD" && eventType !== "RED_CARD") {
+        setError("Jogador expulso nao pode receber este evento.");
+        resetFlow();
+        return;
+      }
+      // Impede novo cartão em quem já está expulso
+      if (isExpelled(playerId) && (eventType === "YELLOW_CARD" || eventType === "RED_CARD")) {
+        setError("Jogador ja esta expulso.");
+        resetFlow();
+        return;
+      }
+    }
+
+    setSubmitting(true);
     try {
-      setError("");
-      if (sessionClosed) { setError("Sessao encerrada."); return; }
-      await apiRequest(`/leagues/${league.id}/matches/${state.match.match.id}/events`, {
-        method: "POST", token,
-        body: {
-          event_type: eventType, team_id: teamId, player_id: playerId,
-          related_player_id: null,
-          minute: Math.floor(clockSeconds / 60), second: clockSeconds % 60, notes: null,
-        },
-      });
+      await postEvent(eventType, teamId, playerId);
+
+      // 2 amarelos = vermelho automático
+      if (eventType === "YELLOW_CARD" && playerId) {
+        const cards = playerCards.get(playerId) ?? { yellow: 0, red: 0 };
+        if (cards.yellow + 1 >= 2) {
+          await postEvent("RED_CARD", teamId, playerId);
+          setToast("Segundo amarelo — vermelho automático.");
+        } else {
+          setToast(`${getEventLabel(eventType)} registrado.`);
+        }
+      } else {
+        setToast(`${getEventLabel(eventType)} registrado.`);
+      }
+
       await refreshMatchState(league.id, state.match.match.id, token);
       if (playerId) setHighlightedPlayerId(playerId);
-      setToast(`${getEventLabel(eventType)} registrado.`);
       resetFlow();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Nao foi possivel registrar o evento.");
+    } finally {
+      setSubmitting(false);
     }
   }
 
@@ -236,16 +297,18 @@ export default function MatchLivePage({ params }: { params: Promise<{ slug: stri
   }
 
   function handlePickAction(action: MatchEventType) {
+    if (submitting) return;
     if (FLOW_EVENTS.has(action)) { setActiveAction(action); return; }
     void submitStatusAction(action);
   }
 
   function handlePickPlayer(playerId: string) {
-    if (!activeAction || !selectedTeamId) return;
+    if (!activeAction || !selectedTeamId || submitting) return;
     void submitEvent(activeAction, selectedTeamId, playerId);
   }
 
   function handleFieldPickPlayer(playerId: string, teamId: string) {
+    if (submitting) return;
     setSelectedTeamId(teamId);
     if (!activeAction) return;
     void submitEvent(activeAction, teamId, playerId);
@@ -431,11 +494,12 @@ export default function MatchLivePage({ params }: { params: Promise<{ slug: stri
             <div className="grid grid-cols-5 gap-2">
               {EVENT_ACTIONS.map((action) => {
                 const active = activeAction === action.type;
+                const btnDisabled = disabled || submitting;
                 return (
                   <button
                     key={action.type}
                     type="button"
-                    disabled={disabled}
+                    disabled={btnDisabled}
                     onClick={() => handlePickAction(action.type)}
                     style={
                       active
@@ -445,7 +509,7 @@ export default function MatchLivePage({ params }: { params: Promise<{ slug: stri
                     className={[
                       "flex flex-col items-center gap-2 rounded-2xl border py-4 transition-all",
                       active ? "scale-[1.03] shadow-lg" : "hover:border-white/14 hover:scale-[1.02]",
-                      disabled ? "pointer-events-none opacity-40" : "",
+                      btnDisabled ? "pointer-events-none opacity-40" : "",
                     ].join(" ")}
                   >
                     <span className="text-2xl leading-none">{action.emoji}</span>
@@ -524,30 +588,38 @@ export default function MatchLivePage({ params }: { params: Promise<{ slug: stri
                     </p>
                     {activeAction ? (
                       <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
-                        {selectedTeam.players.map((player) => (
-                          <button
-                            key={player.player_id}
-                            type="button"
-                            onClick={() => handlePickPlayer(player.player_id)}
-                            className={[
-                              "rounded-xl border border-white/8 bg-white/[0.03] px-3 py-2.5 text-left transition-all",
-                              "hover:border-[--color-accent-primary]/30 hover:bg-[--color-accent-primary]/8 hover:text-[--color-accent-primary]",
-                              highlightedPlayerId === player.player_id
-                                ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-300"
-                                : "",
-                            ].join(" ")}
-                          >
-                            <span className="block truncate text-sm font-semibold text-white">
-                              {player.player_name}
-                              {player.is_captain ? (
-                                <span className="ml-1 text-[10px] text-[--color-accent-primary]">C</span>
-                              ) : null}
-                            </span>
-                            <span className="text-[10px] text-[--color-text-muted]">
-                              {player.position ?? "Livre"}
-                            </span>
-                          </button>
-                        ))}
+                        {selectedTeam.players.map((player) => {
+                          const expelled = isExpelled(player.player_id);
+                          const playerDisabled = submitting || expelled;
+                          return (
+                            <button
+                              key={player.player_id}
+                              type="button"
+                              disabled={playerDisabled}
+                              onClick={() => handlePickPlayer(player.player_id)}
+                              className={[
+                                "rounded-xl border px-3 py-2.5 text-left transition-all",
+                                expelled
+                                  ? "border-red-400/20 bg-red-400/[0.06] opacity-50 cursor-not-allowed"
+                                  : "border-white/8 bg-white/[0.03] hover:border-[--color-accent-primary]/30 hover:bg-[--color-accent-primary]/8 hover:text-[--color-accent-primary]",
+                                highlightedPlayerId === player.player_id
+                                  ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-300"
+                                  : "",
+                              ].join(" ")}
+                            >
+                              <span className="block truncate text-sm font-semibold text-white">
+                                {player.player_name}
+                                {player.is_captain ? (
+                                  <span className="ml-1 text-[10px] text-[--color-accent-primary]">C</span>
+                                ) : null}
+                                {expelled ? <span className="ml-1 text-[10px] text-red-400">🟥</span> : null}
+                              </span>
+                              <span className="text-[10px] text-[--color-text-muted]">
+                                {expelled ? "Expulso" : (player.position ?? "Livre")}
+                              </span>
+                            </button>
+                          );
+                        })}
                       </div>
                     ) : (
                       <p className="rounded-xl border border-white/6 bg-white/[0.02] px-4 py-4 text-center text-sm text-[--color-text-muted]">
