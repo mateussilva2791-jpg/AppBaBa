@@ -174,6 +174,7 @@ export default function SessionPage() {
   const [closingSession, setClosingSession] = useState(false);
   const [showFinalizeDialog, setShowFinalizeDialog] = useState(false);
   const [savingPresenceId, setSavingPresenceId] = useState("");
+  const [selectingAll, setSelectingAll] = useState(false);
   const [movingPlayerId, setMovingPlayerId] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -351,6 +352,19 @@ export default function SessionPage() {
       return;
     }
 
+    // Optimistic update — elimina o flicker atualizando o estado antes da API responder
+    setSessionPlayers((prev) => {
+      const existing = prev.find((p) => p.player_id === playerId);
+      if (existing) {
+        return prev.map((p) =>
+          p.player_id === playerId
+            ? { ...p, is_confirmed: checked, attendance_status: checked ? "CONFIRMED" : "PENDING" }
+            : p,
+        );
+      }
+      return prev;
+    });
+
     try {
       setError("");
       setSuccess("");
@@ -403,9 +417,69 @@ export default function SessionPage() {
       await refreshSessionData(league.id, selectedSessionId);
       setSuccess("Presenca atualizada.");
     } catch (submissionError) {
+      // Reverte o optimistic update em caso de erro
+      await refreshSessionData(league.id, selectedSessionId);
       setError(submissionError instanceof Error ? submissionError.message : "Nao foi possivel atualizar a presenca.");
     } finally {
       setSavingPresenceId("");
+    }
+  }
+
+  async function handleSelectAll() {
+    const token = getToken();
+    if (!token || !league || !selectedSessionId || sessionLocked) return;
+
+    const unconfirmed = availablePlayers.filter((p) => !confirmedSessionPlayerIds.has(p.id));
+    if (unconfirmed.length === 0) return;
+
+    setSelectingAll(true);
+    setError("");
+    setSuccess("");
+
+    // Optimistic update para todos de uma vez
+    setSessionPlayers((prev) => {
+      const prevIds = new Set(prev.map((p) => p.player_id));
+      const updated = prev.map((p) =>
+        unconfirmed.some((u) => u.id === p.player_id)
+          ? { ...p, is_confirmed: true, attendance_status: "CONFIRMED" }
+          : p,
+      );
+      const newEntries = unconfirmed
+        .filter((u) => !prevIds.has(u.id))
+        .map((u) => ({ player_id: u.id, is_confirmed: true, attendance_status: "CONFIRMED" } as SessionPlayer));
+      return [...updated, ...newEntries];
+    });
+
+    try {
+      await Promise.all(
+        unconfirmed.map(async (player) => {
+          const existing = sessionPlayerByPlayerId.get(player.id);
+          if (!existing) {
+            try {
+              await apiRequest<SessionPlayer>(`/leagues/${league.id}/sessions/${selectedSessionId}/players`, {
+                method: "POST",
+                token,
+                body: { player_id: player.id, is_confirmed: true, attendance_status: "CONFIRMED" },
+              });
+            } catch (err) {
+              if (!(err instanceof ApiError && err.status === 400)) throw err;
+            }
+          } else if (!existing.is_confirmed) {
+            await apiRequest<SessionPlayer>(`/leagues/${league.id}/sessions/${selectedSessionId}/players/${existing.id}`, {
+              method: "PATCH",
+              token,
+              body: { is_confirmed: true, attendance_status: "CONFIRMED" },
+            });
+          }
+        }),
+      );
+      await refreshSessionData(league.id, selectedSessionId);
+      setSuccess("Todos os atletas confirmados.");
+    } catch (err) {
+      await refreshSessionData(league.id, selectedSessionId);
+      setError(err instanceof Error ? err.message : "Erro ao confirmar todos os atletas.");
+    } finally {
+      setSelectingAll(false);
     }
   }
 
@@ -726,7 +800,19 @@ export default function SessionPage() {
 
           <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
             <div className="page-card">
-              <SectionHeader eyebrow="Presenca" title="Atletas disponiveis" description="Os jogadores entram na rodada com leitura forte de funcao e prontidao." />
+              <div className="flex items-start justify-between gap-4">
+                <SectionHeader eyebrow="Presenca" title="Atletas disponiveis" description="Os jogadores entram na rodada com leitura forte de funcao e prontidao." />
+                {!sessionLocked && availablePlayers.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => void handleSelectAll()}
+                    disabled={selectingAll || confirmedSessionPlayerIds.size === availablePlayers.length}
+                    className="shrink-0 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-3 py-1.5 text-xs font-semibold text-emerald-300 transition-colors hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    {selectingAll ? "Confirmando..." : "Selecionar todos"}
+                  </button>
+                )}
+              </div>
               <div className="mt-6 grid gap-3 md:grid-cols-2">
                 {availablePlayers.map((player) => {
                   const checked = confirmedSessionPlayerIds.has(player.id);
