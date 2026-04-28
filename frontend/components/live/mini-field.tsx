@@ -354,7 +354,7 @@ export function MiniField({
     <div style={{
       position: "relative",
       width: "100%",
-      paddingBottom: "140%",
+      height: 360,
       borderRadius: 16,
       overflow: "hidden",
       border: "1px solid rgba(255,255,255,0.1)",
